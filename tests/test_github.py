@@ -33,14 +33,14 @@ def test_filter_labels_godot_rules():
         {"name": "cherrypick:4.3", "description": ""},
         {"name": "archived", "description": ""},
     ]
-    names = [l["name"] for l in filter_labels(cfg, raw)]
+    names = [lab["name"] for lab in filter_labels(cfg, raw)]
     assert names == ["bug", "platform:macos", "topic:gui"]
 
 
 def test_filter_labels_flutter_excludes_infra():
     cfg = REPOS["flutter"]
     raw = [{"name": n} for n in ["team-infra", "team-engine", "p: camera", "a: text input", "engine", "P1"]]
-    assert [l["name"] for l in filter_labels(cfg, raw)] == ["a: text input", "engine", "team-engine"]
+    assert [lab["name"] for lab in filter_labels(cfg, raw)] == ["a: text input", "engine", "team-engine"]
 
 
 def _ev(event, label, actor, t):
@@ -55,7 +55,7 @@ def test_first_pass_is_first_human_batch_only():
         _ev("labeled", "topic:rendering", "alice", "2026-10-01T10:06:00Z"),
         _ev("labeled", "needs testing", "alice", "2026-10-01T10:06:30Z"),
         _ev("unlabeled", "topic:rendering", "bob", "2026-10-01T10:30:00Z"),  # later correction
-        _ev("labeled", "platform:macos", "alice", "2026-10-02T09:00:00Z"),   # outside window
+        _ev("labeled", "platform:macos", "alice", "2026-10-02T09:00:00Z"),  # outside window
     ]
     assert first_pass(events, targets) == {"bug", "topic:rendering"}
 

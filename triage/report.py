@@ -1,4 +1,5 @@
 """Timeline of eval runs per repo: the chart for the demo, as text."""
+
 from __future__ import annotations
 
 from .store import Store

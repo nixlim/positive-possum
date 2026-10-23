@@ -27,7 +27,10 @@ def test_latest_prediction_ignores_correct_resends(tmp_path):
 
 
 def test_parse_labels_drops_unknown():
-    kept, unknown = parse_labels('{"labels": ["bug", "made-up", "bug"]}', {"bug", "crash"})
+    kept, unknown, extra = parse_labels(
+        '{"labels": ["bug", "made-up", "bug"], "reason": "pov"}', {"bug", "crash"}
+    )
+    assert extra == {"reason": "pov"}
     assert kept == ["bug"] and unknown == ["made-up"]
 
 

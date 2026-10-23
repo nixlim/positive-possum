@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Patrol Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#07090d;--panel:#0d1117;--line:#1c2530;--ink:#d8e0ea;--dim:#75829a;--faint:#3a4556;
+  --frontier:#ffb547;--owned:#35e0d6;--keep:#4ade80;--revert:#ff5470;--unsure:#c6a7ff;--hunk:#4b5a73}
+*{box-sizing:border-box}html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--ink);font:13px/1.45 "IBM Plex Mono",ui-monospace,monospace;overflow:hidden}
+body::after{content:"";pointer-events:none;position:fixed;inset:0;background:repeating-linear-gradient(0deg,rgba(255,255,255,.025) 0 1px,transparent 1px 3px);mix-blend-mode:overlay}
+header{height:52px;display:flex;align-items:center;gap:18px;padding:0 18px;border-bottom:1px solid var(--line);background:linear-gradient(90deg,#0d1117,#0a0e14)}
+h1{font:700 18px "Chakra Petch",sans-serif;letter-spacing:.14em;text-transform:uppercase;margin:0}
+h1 b{color:var(--owned)}
+.meta{color:var(--dim);font-size:11px;letter-spacing:.06em}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--faint);margin-right:6px;vertical-align:middle}
+.dot.on{background:var(--keep);box-shadow:0 0 8px var(--keep);animation:pulse 1.6s infinite}
+@keyframes pulse{50%{opacity:.4}}
+main{display:grid;grid-template-columns:1.45fr 1fr .95fr;height:calc(100% - 52px)}
+section{border-right:1px solid var(--line);overflow:hidden;display:flex;flex-direction:column;min-width:0}
+section:last-child{border-right:0}
+h2{font:700 11px "Chakra Petch",sans-serif;letter-spacing:.22em;text-transform:uppercase;color:var(--dim);margin:0;padding:12px 16px 8px;border-bottom:1px dashed var(--line)}
+.scroll{overflow-y:auto;padding:10px 12px;flex:1}
+/* cards */
+.card{border:1px solid var(--line);border-left:3px solid var(--faint);background:var(--panel);margin-bottom:10px;padding:10px 12px;cursor:pointer;animation:slide .45s cubic-bezier(.2,.8,.2,1) both;transition:border-color .2s}
+.card:hover,.card.sel{border-color:#2d3a4b}.card.sel{box-shadow:0 0 0 1px var(--owned) inset}
+.card.keep{border-left-color:var(--keep)}.card.revert{border-left-color:var(--revert)}.card.err{border-left-color:#8a5a00}
+@keyframes slide{from{transform:translateX(-14px);opacity:0}to{transform:none;opacity:1}}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.title{font-weight:600;color:#fff;text-decoration:none;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.title:hover{text-decoration:underline}
+.chip{font:600 10px "Chakra Petch",sans-serif;letter-spacing:.12em;text-transform:uppercase;padding:2px 7px;border:1px solid;border-radius:2px}
+.chip.keep{color:var(--keep);border-color:var(--keep)}.chip.revert{color:var(--revert);border-color:var(--revert)}
+.chip.unsure{color:var(--unsure);border-color:var(--unsure)}.chip.err{color:var(--frontier);border-color:var(--frontier)}
+.tag{font-size:10px;letter-spacing:.08em;padding:1px 6px;border-radius:2px;background:#131a23}
+.tag.frontier{color:var(--frontier)}.tag.owned{color:var(--owned);background:#0b2a2b}
+.sub{color:var(--dim);font-size:11px;margin-top:3px}
+.conf{height:3px;background:#161d27;margin-top:7px;border-radius:2px;overflow:hidden}
+.conf i{display:block;height:100%;background:var(--dim);transition:width .6s}
+.conf.high i{background:var(--owned)}.conf.medium i{background:var(--frontier)}.conf.low i{background:var(--unsure)}
+pre{margin:8px 0 0;font:11.5px/1.4 "IBM Plex Mono",monospace;white-space:pre-wrap;word-break:break-word;max-height:150px;overflow:hidden;color:#9aa7ba;-webkit-mask-image:linear-gradient(#000 75%,transparent)}
+.card.sel pre{max-height:none;-webkit-mask-image:none}
+.l.add{color:#bdf5c8;background:rgba(74,222,128,.12)}.l.del{color:#ffc3cd;background:rgba(255,84,112,.12);text-decoration:line-through;opacity:.8}
+.l.hunk{color:var(--hunk)}
+.corr{margin-top:8px;font-size:11px;padding:6px 8px;border:1px dashed var(--owned);color:var(--owned)}
+/* gauge */
+.gauge{display:flex;flex-direction:column;align-items:center;padding:22px 16px 10px}
+.ring{position:relative;width:210px;height:210px}
+.ring svg{transform:rotate(-90deg)}.ring circle{fill:none;stroke-width:10}
+.ring .bg{stroke:#141b25}.ring .fg{stroke:var(--owned);stroke-linecap:round;transition:stroke-dashoffset 1.2s cubic-bezier(.2,.8,.2,1);filter:drop-shadow(0 0 6px var(--owned))}
+.ring .num{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.ring .num b{font:700 52px/1 "Chakra Petch",sans-serif;color:#fff}
+.ring .num span{font-size:10px;letter-spacing:.2em;color:var(--dim);text-transform:uppercase;margin-top:6px;text-align:center}
+.kv{display:grid;grid-template-columns:1fr auto;gap:5px 14px;padding:8px 16px;font-size:12px}
+.kv dt{color:var(--dim)}.kv dd{margin:0;text-align:right;color:#fff}
+.kv dd.frontier{color:var(--frontier)}.kv dd.owned{color:var(--owned)}.kv dd.na{color:var(--faint)}
+.note{padding:8px 16px;color:var(--dim);font-size:11px}
+.status{margin:6px 12px 12px;padding:8px 10px;border:1px solid var(--line);background:#0a0e14}
+.status label{display:block;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin-bottom:5px}
+.status input{width:100%;background:transparent;border:0;border-bottom:1px solid var(--faint);color:#fff;font:inherit;padding:3px 0;outline:0}
+/* actions */
+.act{padding:14px 16px;border-bottom:1px dashed var(--line)}
+.act .sel-title{font-weight:600;color:#fff;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.btns{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+button{font:700 14px "Chakra Petch",sans-serif;letter-spacing:.18em;text-transform:uppercase;padding:14px 0;border:1px solid;background:transparent;color:inherit;cursor:pointer;transition:all .15s}
+button.keep{border-color:var(--keep);color:var(--keep)}button.keep:hover{background:var(--keep);color:#031}
+button.revert{border-color:var(--revert);color:var(--revert)}button.revert:hover{background:var(--revert);color:#300}
+button:disabled{opacity:.35;cursor:default}
+.hint{color:var(--faint);font-size:10px;margin-top:8px;letter-spacing:.08em}
+.feed{padding:4px 12px}
+.ev{padding:8px 10px;border-left:2px solid var(--faint);margin:8px 0;font-size:11.5px;animation:slide .4s both}
+.ev.correction{border-left-color:var(--owned)}.ev.confirmed{border-left-color:var(--keep)}
+.ev time{color:var(--faint);font-size:10px;margin-right:6px}
+.ev .arrow{color:var(--owned)}
+.ev .q{display:block;color:var(--dim);margin-top:4px;white-space:pre-wrap}
+.learned{display:grid;grid-template-columns:1fr auto auto;gap:4px 10px;padding:6px 12px;font-size:11.5px;align-items:center}
+.learned .t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff}
+.learned .old{color:var(--dim);text-decoration:line-through}
+.empty{color:var(--faint);padding:14px 16px;font-size:11px;letter-spacing:.06em}
+.log{position:fixed;left:12px;bottom:10px;color:var(--faint);font-size:10px;max-width:40vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:1100px){body{overflow:auto}main{grid-template-columns:1fr;height:auto}section{border-right:0;border-bottom:1px solid var(--line)}.scroll{max-height:70vh}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Patrol <b>Desk</b></h1>
+  <span class="meta"><span class="dot" id="dot"></span><span id="repo">connecting</span></span>
+  <span class="meta" id="model"></span>
+  <span class="meta" style="margin-left:auto">every verdict on this screen was served through Mubit · nothing is mocked</span>
+</header>
+<main>
+  <section>
+    <h2>Stream · live edits</h2>
+    <div class="scroll" id="cards"><div class="empty">waiting for the first edit from the Wikimedia stream…</div></div>
+  </section>
+  <section>
+    <h2>Gauge · who answers</h2>
+    <div class="scroll">
+      <div class="gauge">
+        <div class="ring">
+          <svg width="210" height="210" viewBox="0 0 210 210"><circle class="bg" cx="105" cy="105" r="94"/><circle class="fg" id="arc" cx="105" cy="105" r="94" stroke-dasharray="590.6" stroke-dashoffset="590.6"/></svg>
+          <div class="num"><b id="pct">0%</b><span>edits answered by a model<br>other than the frontier one</span></div>
+        </div>
+      </div>
+      <dl class="kv" id="kv"></dl>
+      <div class="note" id="costnote"></div>
+      <div class="status"><label>Mubit console says (typed by hand · the API exposes no training status)</label><input id="status" placeholder="e.g. enwiki task: 128 kept examples · adapter v1 training"></div>
+    </div>
+  </section>
+  <section>
+    <h2>Patrol · actions</h2>
+    <div class="act">
+      <div class="sel-title" id="selTitle">select a card</div>
+      <div class="sub" id="selSub"></div>
+      <div class="btns"><button class="keep" id="bKeep" disabled>Keep</button><button class="revert" id="bRevert" disabled>Revert</button></div>
+      <div class="hint">K / R on the selected card · a disagreement writes a guideline and re-sends the edit through Mubit</div>
+    </div>
+    <h2>Learning feed</h2>
+    <div class="scroll" style="flex:1.2"><div class="feed" id="feed"><div class="empty">no corrections yet</div></div></div>
+    <h2>What it learned · old → new</h2>
+    <div class="scroll" style="flex:.8"><div class="learned" id="learned"></div></div>
+  </section>
+</main>
+<div class="log" id="log"></div>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const state = {cards: new Map(), selected: null, pinned: false, model: ""};
+const CONF = {low: 33, medium: 66, high: 100};
+
+function chip(c) {
+  if (c.error) return '<span class="chip err">error</span>';
+  if (c.confidence === "low") return '<span class="chip unsure">unsure · ' + esc(c.verdict) + '</span>';
+  const label = c.verdict === "revert" ? (c.reason || "revert").replace("_", " ") : "clean";
+  return '<span class="chip ' + esc(c.verdict) + '">' + esc(label) + '</span>';
+}
+function diffHtml(d) {
+  return d.split("\n").map(l => {
+    const k = l.startsWith("+") ? "add" : l.startsWith("-") ? "del" : l.startsWith("@@") ? "hunk" : "";
+    return '<span class="l ' + k + '">' + esc(l) + '</span>';
+  }).join("\n");
+}
+function cardHtml(c) {
+  const who = c.anon ? "anonymous IP" : "registered";
+  const served = c.served ? '<span class="tag ' + (c.owned ? "owned" : "frontier") + '">' + (c.owned ? "owned · " : "frontier · ") + esc(c.served) + '</span>' : "";
+  const corr = c.correction ? '<div class="corr">patroller said ' + esc(c.correction.verdict) + (c.correction.changed ? ' · guideline written · re-sent → ' + esc(c.correction.resent || "?") + (c.correction.resent === c.correction.verdict ? " ✓" : " ✗") : " · confirmed") + '</div>' : "";
+  return '<div class="row"><a class="title" href="' + esc(c.url) + '" target="_blank" rel="noopener">' + esc(c.title) + '</a>' + chip(c) + served + '</div>'
+    + '<div class="sub">' + who + ' · ' + esc(c.comment || "(no summary)") + ' · ' + c.latency_ms + ' ms · ' + c.tokens + ' tok' + (c.error ? ' · ' + esc(c.error) : "") + '</div>'
+    + '<div class="conf ' + esc(c.confidence || "") + '"><i style="width:' + (CONF[c.confidence] || 0) + '%"></i></div>'
+    + '<pre>' + diffHtml(c.diff) + '</pre>' + corr;
+}
+function upsertCard(c, fresh) {
+  let el = document.querySelector('[data-id="' + c.number + '"]');
+  if (!el) {
+    el = document.createElement("div"); el.dataset.id = c.number;
+    const box = $("cards"); box.querySelector(".empty")?.remove();
+    fresh ? box.prepend(el) : box.append(el);
+    el.onclick = e => { if (e.target.tagName !== "A") select(c.number, true); };
+  }
+  el.className = "card " + (c.error ? "err" : c.verdict || "") + (state.selected === c.number ? " sel" : "");
+  el.innerHTML = cardHtml(c);
+  state.cards.set(c.number, c);
+  while ($("cards").children.length > 60) { const last = $("cards").lastElementChild; state.cards.delete(+last.dataset.id); last.remove(); }
+  if (fresh && !state.pinned) select(c.number, false);
+}
+function select(id, pin) {
+  state.selected = id; state.pinned = pin;
+  document.querySelectorAll(".card").forEach(e => e.classList.toggle("sel", +e.dataset.id === id));
+  const c = state.cards.get(id);
+  $("selTitle").textContent = c ? c.title : "select a card";
+  $("selSub").textContent = c ? "model said " + (c.verdict || "error") + (c.reason ? " (" + c.reason + ", " + c.confidence + ")" : "") + " · rev " + c.number : "";
+  $("bKeep").disabled = $("bRevert").disabled = !c || !!c.correction;
+}
+async function send(verdict) {
+  const id = state.selected; if (!id || $("bKeep").disabled) return;
+  $("bKeep").disabled = $("bRevert").disabled = true;
+  const r = await fetch("/verdict", {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify({revid: id, verdict})});
+  if (!r.ok) log("verdict failed: " + r.status);
+}
+$("bKeep").onclick = () => send("keep"); $("bRevert").onclick = () => send("revert");
+document.addEventListener("keydown", e => { if (e.target.tagName === "INPUT") return; if (e.key === "k") send("keep"); if (e.key === "r") send("revert"); });
+
+function money(x) { return x == null ? null : "$" + x.toFixed(2); }
+function stats(s) {
+  const pct = Math.round(s.owned_share * 100);
+  $("pct").textContent = pct + "%";
+  $("arc").style.strokeDashoffset = 590.6 * (1 - s.owned_share);
+  const rows = [];
+  for (const [m, v] of Object.entries(s.by_served)) {
+    const owned = v.owned;  // decided by the backend (config.is_provider), same as the gauge
+    rows.push(['<dt>' + (owned ? "owned" : "frontier") + ' · ' + esc(m) + '</dt><dd class="' + (owned ? "owned" : "frontier") + '">' + v.n + ' calls · p50 ' + v.p50_ms + ' ms</dd>']);
+  }
+  rows.push(['<dt>frontier cost at this rate</dt><dd class="frontier">' + (money(s.frontier_cost_per_day_usd) || "–") + ' / day</dd>']);
+  rows.push(['<dt>owned model cost</dt><dd class="na">' + (money(s.owned_cost_per_day_usd) || "not published by Mubit") + '</dd>']);
+  rows.push(['<dt>calls · errors · dropped</dt><dd>' + s.calls + ' · ' + s.errors + ' · ' + s.dropped + '</dd>']);
+  rows.push(['<dt>corrections · guideline lines</dt><dd class="owned">' + s.corrections + ' · ' + s.guidelines + '</dd>']);
+  $("kv").innerHTML = rows.join("");
+  $("costnote").textContent = "last " + s.window_hours + " h · frontier priced at Sonnet 5.5 list ($2 / $10 per MTok) from logged tokens · who answered is read from the served model string Mubit returns";
+}
+function feedItem(e) {
+  const t = '<time>' + e.ts.slice(11, 19) + '</time>';
+  if (e.type === "confirmed") return '<div class="ev confirmed">' + t + 'confirmed <b>' + esc(e.verdict) + '</b> on “' + esc(e.title) + '”</div>';
+  return '<div class="ev correction">' + t + 'correction received · ' + esc(e.old || "?") + ' <span class="arrow">→</span> ' + esc(e.new)
+    + ' · guideline #' + e.guidelines_total + ' written · re-sent through Mubit → <b>' + esc(e.resent || "?") + '</b> ' + (e.agrees ? "✓" : "✗") + (e.served ? ' (' + esc(e.served) + ')' : "")
+    + '<span class="q">' + esc(e.guideline) + '</span></div>';
+}
+function learning(e, fresh) {
+  const f = $("feed"); f.querySelector(".empty")?.remove();
+  fresh ? f.insertAdjacentHTML("afterbegin", feedItem(e)) : f.insertAdjacentHTML("beforeend", feedItem(e));
+  if (e.type === "correction") {
+    const row = '<span class="t">' + esc(e.title) + '</span><span class="old">' + esc(e.old || "?") + '</span><span class="chip ' + esc(e.new) + '">' + esc(e.new) + '</span>';
+    fresh ? $("learned").insertAdjacentHTML("afterbegin", row) : $("learned").insertAdjacentHTML("beforeend", row);
+  }
+}
+function log(t) { $("log").textContent = new Date().toTimeString().slice(0, 8) + " " + t; }
+
+$("status").addEventListener("change", e => fetch("/status", {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify({text: e.target.value})}));
+const es = new EventSource("/events");
+es.addEventListener("snapshot", e => {
+  const s = JSON.parse(e.data); state.model = s.model;
+  $("repo").textContent = s.repo; $("model").textContent = "task model " + s.model; $("dot").classList.add("on");
+  $("cards").innerHTML = s.cards.length ? "" : '<div class="empty">waiting for the first edit from the Wikimedia stream…</div>';
+  [...s.cards].reverse().forEach(c => upsertCard(c, false));
+  if (s.cards.length) select(s.cards[s.cards.length - 1].number, false);
+  s.learning.forEach(ev => learning(ev, false));
+  stats(s.stats); $("status").value = s.status.text || "";
+});
+es.addEventListener("card", e => { const c = JSON.parse(e.data); upsertCard(c, !state.cards.has(c.number)); if (state.selected === c.number) select(c.number, state.pinned); });
+es.addEventListener("stats", e => stats(JSON.parse(e.data)));
+es.addEventListener("learning", e => learning(JSON.parse(e.data), true));
+es.addEventListener("status", e => { $("status").value = JSON.parse(e.data).text; });
+es.addEventListener("log", e => log(JSON.parse(e.data).text));
+es.onerror = () => { $("dot").classList.remove("on"); log("feed disconnected, retrying"); };
+</script>
+</body>
+</html>

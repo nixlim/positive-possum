@@ -1,4 +1,5 @@
 """Pull issues, curated labels and label events from GitHub into a dataset."""
+
 from __future__ import annotations
 
 import hashlib
@@ -6,7 +7,7 @@ import json
 import os
 import re
 import subprocess
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -48,6 +49,7 @@ def _paginate(client: httpx.Client, path: str, params: dict):
 
 # ---- pure helpers (tested) -------------------------------------------------
 
+
 def clean_body(body: str | None, max_chars: int) -> str:
     text = _COMMENT_RE.sub("", body or "")
     text = _BLANK_RE.sub("\n\n", text).strip()
@@ -58,9 +60,12 @@ def clean_body(body: str | None, max_chars: int) -> str:
 
 def filter_labels(cfg: RepoConfig, labels: list[dict]) -> list[dict]:
     """Keep only target labels, as {name, description}, sorted by name."""
-    out = [{"name": l["name"], "description": (l.get("description") or "").strip()}
-           for l in labels if cfg.is_target(l["name"])]
-    return sorted(out, key=lambda l: l["name"])
+    out = [
+        {"name": lab["name"], "description": (lab.get("description") or "").strip()}
+        for lab in labels
+        if cfg.is_target(lab["name"])
+    ]
+    return sorted(out, key=lambda lab: lab["name"])
 
 
 def is_bot(actor: str | None) -> bool:
@@ -108,19 +113,20 @@ def _ts(s: str) -> datetime:
 
 # ---- network ---------------------------------------------------------------
 
+
 def fetch_labels(client: httpx.Client, cfg: RepoConfig) -> list[dict]:
     raw = list(_paginate(client, f"/repos/{cfg.full_name}/labels", {"per_page": 100}))
     return filter_labels(cfg, raw)
 
 
 def fetch_issues(client: httpx.Client, cfg: RepoConfig, n: int, targets: set[str]) -> list[dict]:
-    cutoff = datetime.now(timezone.utc) - timedelta(days=MIN_AGE_DAYS)
+    cutoff = datetime.now(UTC) - timedelta(days=MIN_AGE_DAYS)
     out: list[dict] = []
     params = {"state": "all", "per_page": 100, "sort": "created", "direction": "desc"}
     for item in _paginate(client, f"/repos/{cfg.full_name}/issues", params):
         if "pull_request" in item or _ts(item["created_at"]) > cutoff:
             continue
-        names = {l["name"] for l in item["labels"]}
+        names = {lab["name"] for lab in item["labels"]}
         if not names & targets:
             continue
         out.append(item)
@@ -132,9 +138,14 @@ def fetch_issues(client: httpx.Client, cfg: RepoConfig, n: int, targets: set[str
 def fetch_events(client: httpx.Client, cfg: RepoConfig, number: int) -> list[dict]:
     raw = _paginate(client, f"/repos/{cfg.full_name}/issues/{number}/events", {"per_page": 100})
     return [
-        {"event": e["event"], "label": e["label"]["name"],
-         "actor": (e.get("actor") or {}).get("login"), "created_at": e["created_at"]}
-        for e in raw if e["event"] in ("labeled", "unlabeled")
+        {
+            "event": e["event"],
+            "label": e["label"]["name"],
+            "actor": (e.get("actor") or {}).get("login"),
+            "created_at": e["created_at"],
+        }
+        for e in raw
+        if e["event"] in ("labeled", "unlabeled")
     ]
 
 
@@ -143,29 +154,34 @@ def build_dataset(cfg: RepoConfig, n: int, data_dir: Path = DATA_DIR) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     with _client() as client:
         labels = fetch_labels(client, cfg)
-        targets = {l["name"] for l in labels}
+        targets = {lab["name"] for lab in labels}
         (out_dir / "labels.json").write_text(json.dumps(labels, indent=1))
         issues = fetch_issues(client, cfg, n, targets)
-        existing = ({r["number"]: r["split"] for r in load_dataset(cfg, data_dir)[1]}
-                    if (out_dir / "issues.jsonl").exists() else {})
+        existing = (
+            {r["number"]: r["split"] for r in load_dataset(cfg, data_dir)[1]}
+            if (out_dir / "issues.jsonl").exists()
+            else {}
+        )
         split = assign_split(cfg.key, [i["number"] for i in issues], existing)
         rows = []
         for i in issues:
             events = fetch_events(client, cfg, i["number"])
-            final = sorted({l["name"] for l in i["labels"]} & targets)
+            final = sorted({lab["name"] for lab in i["labels"]} & targets)
             fp = sorted(first_pass(events, targets))
-            rows.append({
-                "number": i["number"],
-                "title": i["title"],
-                "body": clean_body(i["body"], cfg.body_max_chars),
-                "created_at": i["created_at"],
-                "state": i["state"],
-                "url": i["html_url"],
-                "labels": final,
-                "first_pass": fp,
-                "corrected": fp != final and bool(fp),
-                "split": split[i["number"]],
-            })
+            rows.append(
+                {
+                    "number": i["number"],
+                    "title": i["title"],
+                    "body": clean_body(i["body"], cfg.body_max_chars),
+                    "created_at": i["created_at"],
+                    "state": i["state"],
+                    "url": i["html_url"],
+                    "labels": final,
+                    "first_pass": fp,
+                    "corrected": fp != final and bool(fp),
+                    "split": split[i["number"]],
+                }
+            )
     path = out_dir / "issues.jsonl"
     with path.open("w") as f:
         for r in rows:
@@ -176,5 +192,5 @@ def build_dataset(cfg: RepoConfig, n: int, data_dir: Path = DATA_DIR) -> Path:
 def load_dataset(cfg: RepoConfig, data_dir: Path = DATA_DIR) -> tuple[list[dict], list[dict]]:
     out_dir = data_dir / cfg.key
     labels = json.loads((out_dir / "labels.json").read_text())
-    rows = [json.loads(l) for l in (out_dir / "issues.jsonl").read_text().splitlines() if l.strip()]
+    rows = [json.loads(lab) for lab in (out_dir / "issues.jsonl").read_text().splitlines() if lab.strip()]
     return labels, rows

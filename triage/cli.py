@@ -1,4 +1,5 @@
 """`triage` command line."""
+
 from __future__ import annotations
 
 import argparse
@@ -9,11 +10,13 @@ import time
 from . import guidelines as gl
 from .config import DATA_DIR, MODEL, REPOS, repo
 from .github import build_dataset, load_dataset
-from .wiki import build_dataset as build_wiki_dataset
 from .llm import classify, client
+from .patrol import Patrol
 from .report import render, render_families
 from .runner import run
+from .server import serve
 from .store import Store
+from .wiki import build_dataset as build_wiki_dataset
 
 
 def cmd_pull(a):
@@ -22,8 +25,10 @@ def cmd_pull(a):
     labels, rows = load_dataset(cfg)
     n_eval = sum(r["split"] == "eval" for r in rows)
     n_corr = sum(r["corrected"] for r in rows)
-    print(f"wrote {path}: {len(rows)} items ({n_eval} eval, {len(rows) - n_eval} train), "
-          f"{len(labels)} target labels, {n_corr} with maintainer corrections after first pass")
+    print(
+        f"wrote {path}: {len(rows)} items ({n_eval} eval, {len(rows) - n_eval} train), "
+        f"{len(labels)} target labels, {n_corr} with maintainer corrections after first pass"
+    )
 
 
 def cmd_eval(a):
@@ -37,8 +42,10 @@ def _pct(x: float | None) -> str:
 
 def cmd_replay(a):
     m = run(repo(a.repo), "replay", Store(), limit=a.limit, workers=a.workers, model=a.model)
-    print(f"replayed train issues through Mubit as {m['run_id']}: {m['n']} scored, {m['errors']} errors; "
-          f"exact={_pct(m['exact'])} f1={_pct(m['f1'])} served={m['served']}")
+    print(
+        f"replayed train issues through Mubit as {m['run_id']}: {m['n']} scored, {m['errors']} errors; "
+        f"exact={_pct(m['exact'])} f1={_pct(m['f1'])} served={m['served']}"
+    )
 
 
 def cmd_correct(a):
@@ -49,10 +56,12 @@ def cmd_correct(a):
         raise SystemExit(f"issue #{a.issue} not in dataset")
     if issue["split"] == "eval":
         # Guidelines go into every eval prompt; an eval issue's labels there would leak the answer.
-        raise SystemExit(f"issue #{a.issue} is in the eval split; corrections are only accepted for train issues")
+        raise SystemExit(
+            f"issue #{a.issue} is in the eval split; corrections are only accepted for train issues"
+        )
     store = Store()
     predicted = store.latest_prediction(cfg.key, a.issue) or []
-    final = [l.strip() for l in a.labels.split(",") if l.strip()]
+    final = [lab.strip() for lab in a.labels.split(",") if lab.strip()]
     line = gl.add_correction(cfg.key, issue, predicted, final)
     print("guideline added:", line)
     guide = gl.load(cfg.key, eval_issues={r["number"] for r in rows if r["split"] == "eval"})
@@ -67,6 +76,14 @@ def cmd_report(a):
     if a.families:
         print()
         print(render_families(store, a.families))
+
+
+def cmd_serve(a):
+    cfg = repo(a.repo)
+    if cfg.kind != "wiki":
+        raise SystemExit("the patrol desk follows a wiki; use --repo enwiki")
+    print(f"patrol desk on http://{a.host}:{a.port}  (one Mubit call every {a.rate}s)")
+    serve(Patrol(cfg, model=a.model, min_interval_s=a.rate), a.host, a.port, a.allow_remote)
 
 
 def repos_with_dataset() -> list[str]:
@@ -85,9 +102,11 @@ def cmd_watch(a):
                 print(f"watch {key}: round failed: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
                 continue
             agree = (m.get("agreement_vs_reference") or {}).get("exact")
-            print(f"{m['run_id']}: n={m['n']} errors={m['errors']} exact={_pct(m['exact'])} f1={_pct(m['f1'])} "
-                  f"agree_vs_ref={_pct(agree)} p50={m['p50_ms']}ms served={m['served']}",
-                  flush=True)
+            print(
+                f"{m['run_id']}: n={m['n']} errors={m['errors']} exact={_pct(m['exact'])} f1={_pct(m['f1'])} "
+                f"agree_vs_ref={_pct(agree)} p50={m['p50_ms']}ms served={m['served']}",
+                flush=True,
+            )
         time.sleep(a.every)
 
 
@@ -100,8 +119,10 @@ def main(argv=None):
     s.add_argument("--n", type=int, default=300)
     s.set_defaults(fn=cmd_pull)
 
-    for name, fn, help_ in (("eval", cmd_eval, "score the eval split through Mubit"),
-                            ("replay", cmd_replay, "send the train split through Mubit")):
+    for name, fn, help_ in (
+        ("eval", cmd_eval, "score the eval split through Mubit"),
+        ("replay", cmd_replay, "send the train split through Mubit"),
+    ):
         s = sub.add_parser(name, help=help_)
         s.add_argument("--repo", required=True, choices=REPOS)
         s.add_argument("--limit", type=int)
@@ -120,6 +141,19 @@ def main(argv=None):
     s.add_argument("--repo", choices=REPOS)
     s.add_argument("--families", metavar="RUN_ID", help="also show per-label-family scores for a run")
     s.set_defaults(fn=cmd_report)
+
+    s = sub.add_parser("serve", help="live patrol desk: Wikimedia stream -> Mubit -> browser")
+    s.add_argument("--repo", default="enwiki", choices=REPOS)
+    s.add_argument("--host", default="127.0.0.1")
+    s.add_argument(
+        "--allow-remote",
+        action="store_true",
+        help="serve on a non-loopback host; the desk has no authentication",
+    )
+    s.add_argument("--port", type=int, default=8321)
+    s.add_argument("--rate", type=float, default=2.0, help="minimum seconds between Mubit calls")
+    s.add_argument("--model", default=MODEL)
+    s.set_defaults(fn=cmd_serve)
 
     s = sub.add_parser("watch", help="re-run the Mubit eval on a schedule")
     s.add_argument("--repos", nargs="+", choices=REPOS, help="default: every repo with a pulled dataset")

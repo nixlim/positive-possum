@@ -23,3 +23,6 @@ Mubit and measure, from outside Mubit, when its task-adapted model starts servin
   uncommitted evidence log. `data/guidelines/<repo>.md` accumulates maintainer corrections.
 - Facts about the Mubit API that were verified by hand are in `MUBIT_API_NOTES.md`.
 - Commits go through `lean-forge commit`; landing through `lean-forge land`.
+
+- Live demo: `triage/live.py` (Wikimedia stream + stats, pure functions), `triage/patrol.py` (reader/worker threads, verdicts, corrections), `triage/server.py` (FastAPI, SSE at `/events`), `triage/static/patrol.html` (one page, no build step). Start with `uv run triage serve`.
+- Gates: `uv run ruff check .`, `uv run ruff format --check .`, `uv run pylint triage tests` (400-line module cap), `uv run pytest -q`. Split a module before it reaches the cap.

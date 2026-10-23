@@ -4,6 +4,7 @@ that Mubit started serving a different model.
 Mubit is the only egress (hackathon rule: every LLM call goes through it). The
 Anthropic SDK is pointed at Mubit's Anthropic base URL with the Mubit key as
 its only credential."""
+
 from __future__ import annotations
 
 import json
@@ -37,6 +38,7 @@ class CallResult:
     error: str | None = None
     unknown_labels: list[str] = field(default_factory=list)
     route: str = ROUTE
+    extra: dict = field(default_factory=dict)  # reply fields besides labels (wiki: reason, confidence)
 
 
 def client() -> Anthropic:
@@ -51,28 +53,42 @@ def client() -> Anthropic:
     # ANTHROPIC_API_KEY. The locked SDK reads no credential from the environment once
     # api_key is given; clearing auth_token after guards older SDKs that still fell back
     # to ANTHROPIC_AUTH_TOKEN and would send it as a second credential.
-    c = Anthropic(base_url=MUBIT_ANTHROPIC_BASE_URL, api_key=key, auth_token=None,
-                  timeout=TIMEOUT_S, max_retries=MAX_RETRIES)
+    c = Anthropic(
+        base_url=MUBIT_ANTHROPIC_BASE_URL,
+        api_key=key,
+        auth_token=None,
+        timeout=TIMEOUT_S,
+        max_retries=MAX_RETRIES,
+    )
     c.auth_token = None
     return c
 
 
-def parse_labels(content: str, allowed: set[str]) -> tuple[list[str], list[str]]:
-    """Raises ValueError (json.JSONDecodeError included) on a reply that breaks the schema."""
+def parse_labels(content: str, allowed: set[str]) -> tuple[list[str], list[str], dict]:
+    """(kept labels, unknown labels, other reply fields). Raises ValueError
+    (json.JSONDecodeError included) on a reply that breaks the schema."""
     data = json.loads(content)
     got = data.get("labels") if isinstance(data, dict) else None
-    if not isinstance(got, list) or not all(isinstance(l, str) for l in got):
+    if not isinstance(got, list) or not all(isinstance(lab, str) for lab in got):
         raise ValueError(f"'labels' is not a list of strings: {got!r}"[:200])
-    kept = sorted({l for l in got if l in allowed})
-    unknown = sorted({l for l in got if l not in allowed})
-    return kept, unknown
+    kept = sorted({lab for lab in got if lab in allowed})
+    unknown = sorted({lab for lab in got if lab not in allowed})
+    extra = {k: v for k, v in data.items() if k != "labels" and isinstance(v, (str, int, float, bool))}
+    return kept, unknown, extra
 
 
-def classify(client: Anthropic, full_name: str, labels: list[dict], issue: dict,
-             guidelines: str, model: str = MODEL, kind: str = "github") -> CallResult:
+def classify(
+    client: Anthropic,
+    full_name: str,
+    labels: list[dict],
+    issue: dict,
+    guidelines: str,
+    model: str = MODEL,
+    kind: str = "github",
+) -> CallResult:
     """Always returns a CallResult; any failure is recorded in `error`, never raised."""
     req = build_request(model, full_name, labels, issue, guidelines, kind)
-    allowed = {l["name"] for l in labels}
+    allowed = {lab["name"] for lab in labels}
     res = CallResult([], model, None, None, 0, None, None)
     t0 = time.perf_counter()
     try:
@@ -103,8 +119,8 @@ def classify(client: Anthropic, full_name: str, labels: list[dict], issue: dict,
         text = "".join(b.text for b in resp.content if b.type == "text")
         if not text:
             raise ValueError(f"no text in reply (stop_reason={resp.stop_reason})")
-        res.labels, res.unknown_labels = parse_labels(text, allowed)
+        res.labels, res.unknown_labels, res.extra = parse_labels(text, allowed)
     except Exception as e:
-        res.labels, res.unknown_labels = [], []
+        res.labels, res.unknown_labels, res.extra = [], [], {}
         res.error = f"unparseable reply: {type(e).__name__}: {e}"[:500]
     return res

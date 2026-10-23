@@ -91,3 +91,40 @@ page ("Served by").
   the provider itself.
 - `uv run python mubit_smoke.py` re-checks by hand the API facts the request
   shape relies on (see `MUBIT_API_NOTES.md`).
+
+## Patrol desk (live demo)
+
+```
+uv run triage serve --repo enwiki --rate 2     # http://127.0.0.1:8321
+```
+
+One page, three zones. Left: edits from the Wikimedia recent-changes stream, each
+classified through Mubit as it arrives (verdict, reason, confidence, the served
+model string, latency, tokens). Centre: the share of answers served by something
+other than the task model, p50 per served model, and the frontier cost per day
+projected from logged tokens at Sonnet 5.5 list price. Right: Keep / Revert.
+A click that disagrees with the model appends one guideline line and re-sends
+the same edit in the same Mubit session, so the recorded reply is the corrected
+answer; a click that agrees records nothing new. Each edit takes one verdict; a
+second click on the same edit gets 409. Mubit exposes no training status, so the
+console line is typed by hand and labelled as such.
+
+The desk has no authentication. A verdict spends Mubit credit and writes a line to
+`data/guidelines/enwiki.md`, which reaches every later enwiki prompt. So `serve`
+refuses a non-loopback `--host` unless you also pass `--allow-remote`. Pass it only
+on a network you trust.
+
+The reason and confidence on each card come from two required fields that were added
+to the wiki output schema on 2026-10-23, together with one new rule line in the wiki
+system template. That deliberately forked the enwiki Mubit task. Enwiki eval runs from
+before then have a different `task_sha` and are never used as a reference, and the
+kept-example count started again from zero. See "Deliberate task forks" in
+`MUBIT_API_NOTES.md`. `uv run python mubit_smoke.py` sends the wiki request shape too.
+
+Every live and correction call is in `data/calls.sqlite` (kinds `live`, `correct`).
+
+## Code quality gates
+
+`ruff check`, `ruff format --check`, `pylint` (module size, 400 lines max) and
+`pytest` run on every `lean-forge commit`. Keep modules small: one concern per
+file under `triage/`.

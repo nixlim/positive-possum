@@ -3,6 +3,9 @@
 
 [gates]
 # Named shell commands, run in order on every candidate. All must exit 0.
+lint = "uv run ruff check ."
+format = "uv run ruff format --check ."
+size = "uv run pylint triage tests"
 test = "uv run pytest -q"
 
 [control]

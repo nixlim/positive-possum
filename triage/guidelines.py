@@ -1,5 +1,6 @@
 """Per-repo maintainer guidelines: the only lever that changes recorded replies
 without forking the Mubit task. One line per correction, appended forever."""
+
 from __future__ import annotations
 
 import re
@@ -21,7 +22,9 @@ def load(repo_key: str, eval_issues: set[int] = frozenset(), data_dir: Path = DA
     if not p.exists():
         return ""
     lines = p.read_text().splitlines(keepends=True)
-    return "".join(l for l in lines if (m := _ISSUE_RE.match(l)) is None or int(m[1]) not in eval_issues)
+    return "".join(
+        lab for lab in lines if (m := _ISSUE_RE.match(lab)) is None or int(m[1]) not in eval_issues
+    )
 
 
 def guideline_line(issue: dict, predicted: list[str], final: list[str]) -> str:
@@ -33,12 +36,15 @@ def guideline_line(issue: dict, predicted: list[str], final: list[str]) -> str:
     if removed:
         parts.append("drop " + ", ".join(removed))
     change = "; ".join(parts) or "keep labels as predicted"
-    return (f"- (#{issue['number']}) For items like \"{issue['title']}\": {change} "
-            f"(final labels: {', '.join(final) or 'none'}).")
+    return (
+        f'- (#{issue["number"]}) For items like "{issue["title"]}": {change} '
+        f"(final labels: {', '.join(final) or 'none'})."
+    )
 
 
-def add_correction(repo_key: str, issue: dict, predicted: list[str], final: list[str],
-                   data_dir: Path = DATA_DIR) -> str:
+def add_correction(
+    repo_key: str, issue: dict, predicted: list[str], final: list[str], data_dir: Path = DATA_DIR
+) -> str:
     line = guideline_line(issue, predicted, final)
     p = path(repo_key, data_dir)
     p.parent.mkdir(parents=True, exist_ok=True)

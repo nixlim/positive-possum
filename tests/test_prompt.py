@@ -40,25 +40,40 @@ def test_real_godot_task_identity_is_frozen():
 
 
 WIKI_LABELS = [{"name": "keep", "description": "stays"}, {"name": "revert", "description": "undone"}]
-WIKI_SYSTEM_SHA = "a1ee2c7968e26bc4e13cd130ca4d5e64ee2f1143951becd923d6db36f9d5ada0"
+WIKI_SYSTEM_SHA = "f64566d5568da27c58a32031da3035313b9322a4730204773dfde47819cfd420"
+# The wiki output schema is the other half of the enwiki task identity: editing WIKI_REASONS
+# or CONFIDENCES forks the task like a prompt edit does. Only update this on purpose.
+WIKI_SCHEMA_SHA = "f42293ae876c1163b69c3446e28b40828160ab91efc82c9e7d223eb54dca672f"
 EDIT = {"number": 1381634663, "title": "Compsopogonophyceae", "body": "Editor: anonymous (IP)\nDiff:\n+lol"}
 
 
 def test_wiki_prompt_is_frozen_and_separate_from_github():
     assert _sha(system_prompt("en.wikipedia.org", WIKI_LABELS, "wiki")) == WIKI_SYSTEM_SHA
+    wiki_schema = output_schema(WIKI_LABELS, "wiki")
+    assert _sha(json.dumps(wiki_schema, sort_keys=True)) == WIKI_SCHEMA_SHA
+    assert wiki_schema["required"] == ["labels", "reason", "confidence"]
+    github_schema = output_schema(LABELS)
+    assert set(github_schema["properties"]) == {"labels"} and github_schema["required"] == ["labels"]
     req = build_request("claude-sonnet-5-5", "en.wikipedia.org", WIKI_LABELS, EDIT, "- rule", kind="wiki")
     assert "recent-changes patroller for en.wikipedia.org" in req["system"]
     assert "GitHub" not in req["system"]
     user = req["messages"][0]["content"]
-    assert user.startswith('Patroller guidelines:\n- rule\n\nEdit 1381634663 to "Compsopogonophyceae"\n\nEditor:')
+    assert user.startswith(
+        'Patroller guidelines:\n- rule\n\nEdit 1381634663 to "Compsopogonophyceae"\n\nEditor:'
+    )
     assert req["metadata"] == {"user_id": "en.wikipedia.org#1381634663"}
-    assert req["output_config"]["format"]["schema"]["properties"]["labels"]["items"]["enum"] == ["keep", "revert"]
+    assert req["output_config"]["format"]["schema"]["properties"]["labels"]["items"]["enum"] == [
+        "keep",
+        "revert",
+    ]
 
 
 def test_task_identity_identical_across_issues_and_guidelines():
     other = {"number": 7, "title": "Crash on export", "body": "It crashes."}
     r1 = build_request("claude-sonnet-5-5", "godotengine/godot", LABELS, ISSUE, "")
-    r2 = build_request("claude-sonnet-5-5", "godotengine/godot", LABELS, other, "- add crash for export crashes")
+    r2 = build_request(
+        "claude-sonnet-5-5", "godotengine/godot", LABELS, other, "- add crash for export crashes"
+    )
     for key in ("model", "max_tokens", "system", "output_config"):
         assert r1[key] == r2[key], key
     assert set(r1) == set(r2) == {"model", "max_tokens", "system", "messages", "output_config", "metadata"}
@@ -70,7 +85,9 @@ def test_task_identity_identical_across_issues_and_guidelines():
 
 
 def test_guidelines_live_only_in_user_message():
-    req = build_request("claude-sonnet-5-5", "godotengine/godot", LABELS, ISSUE, "- add topic:gui for button bugs")
+    req = build_request(
+        "claude-sonnet-5-5", "godotengine/godot", LABELS, ISSUE, "- add topic:gui for button bugs"
+    )
     assert "topic:gui for button bugs" not in req["system"]
     (user,) = req["messages"]
     assert user["role"] == "user"

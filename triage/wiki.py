@@ -8,11 +8,12 @@ Dataset rows use the same shape as GitHub issues (number, title, body, labels,
 split) so eval, replay, correct, watch and report work unchanged. `number` is
 the revision id and `body` holds the editor type, edit summary and a unified
 diff of the wikitext."""
+
 from __future__ import annotations
 
 import difflib
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -21,8 +22,8 @@ from .config import DATA_DIR, RepoConfig
 from .github import assign_split, load_dataset
 
 USER_AGENT = "mubit-triage/0.1 (hackathon harness; riabtchuk@gmail.com)"
-MIN_AGE_HOURS = 12   # most reverts land within hours; younger edits have unsettled truth
-MAX_AGE_DAYS = 29    # the recentchanges table only keeps 30 days
+MIN_AGE_HOURS = 12  # most reverts land within hours; younger edits have unsettled truth
+MAX_AGE_DAYS = 29  # the recentchanges table only keeps 30 days
 REVERTED_TAG = "mw-reverted"
 # Edits that themselves undo something: trivially "keep", and their summaries give the
 # game away ("Reverted edits by ..."). The task is about content edits.
@@ -50,6 +51,7 @@ def _api(client: httpx.Client, host: str, params: dict) -> dict:
 
 # ---- pure helpers (tested) -------------------------------------------------
 
+
 def label_for(tags: list[str]) -> str:
     return "revert" if REVERTED_TAG in tags else "keep"
 
@@ -62,7 +64,9 @@ def select_edits(reverted: list[dict], others: list[dict], n: int) -> list[dict]
     """A balanced sample: up to n/2 reverted and n/2 kept content edits, newest first.
     Reverts are a few percent of edits, so an unbalanced pull would teach "keep"."""
     rev = [rc for rc in reverted if is_content_edit(rc)][: n // 2]
-    keep = [rc for rc in others if is_content_edit(rc) and REVERTED_TAG not in rc.get("tags", [])][: n - len(rev)]
+    keep = [rc for rc in others if is_content_edit(rc) and REVERTED_TAG not in rc.get("tags", [])][
+        : n - len(rev)
+    ]
     seen: set[int] = set()
     out = []
     for rc in sorted(rev + keep, key=lambda r: r["timestamp"], reverse=True):
@@ -93,14 +97,20 @@ def edit_body(rc: dict, old: str, new: str, max_chars: int) -> str:
 
 # ---- network ---------------------------------------------------------------
 
+
 def fetch_recent(client: httpx.Client, host: str, n: int, tag: str | None = None) -> list[dict]:
     """Human mainspace edits older than MIN_AGE_HOURS, newest first, optionally with a tag."""
-    start = datetime.now(timezone.utc) - timedelta(hours=MIN_AGE_HOURS)
-    end = datetime.now(timezone.utc) - timedelta(days=MAX_AGE_DAYS)
+    start = datetime.now(UTC) - timedelta(hours=MIN_AGE_HOURS)
+    end = datetime.now(UTC) - timedelta(days=MAX_AGE_DAYS)
     params = {
-        "action": "query", "list": "recentchanges", "rctype": "edit", "rcshow": "!bot",
-        "rcnamespace": 0, "rcprop": "ids|title|timestamp|user|userid|comment|sizes|tags|flags",
-        "rclimit": min(500, max(n, 50)), "rcstart": start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "action": "query",
+        "list": "recentchanges",
+        "rctype": "edit",
+        "rcshow": "!bot",
+        "rcnamespace": 0,
+        "rcprop": "ids|title|timestamp|user|userid|comment|sizes|tags|flags",
+        "rclimit": min(500, max(n, 50)),
+        "rcstart": start.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "rcend": end.strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     if tag:
@@ -120,9 +130,18 @@ def fetch_contents(client: httpx.Client, host: str, revids: list[int]) -> dict[i
     """Wikitext per revision id; suppressed or deleted revisions are absent."""
     out: dict[int, str] = {}
     for i in range(0, len(revids), CONTENT_BATCH):
-        batch = revids[i:i + CONTENT_BATCH]
-        data = _api(client, host, {"action": "query", "prop": "revisions", "revids": "|".join(map(str, batch)),
-                                   "rvprop": "ids|content", "rvslots": "main"})
+        batch = revids[i : i + CONTENT_BATCH]
+        data = _api(
+            client,
+            host,
+            {
+                "action": "query",
+                "prop": "revisions",
+                "revids": "|".join(map(str, batch)),
+                "rvprop": "ids|content",
+                "rvslots": "main",
+            },
+        )
         for page in data["query"].get("pages", []):
             for rev in page.get("revisions", []):
                 content = rev.get("slots", {}).get("main", {}).get("content")
@@ -144,21 +163,27 @@ def build_dataset(cfg: RepoConfig, n: int, data_dir: Path = DATA_DIR) -> Path:
         ids = sorted({rc["old_revid"] for rc in edits} | {rc["revid"] for rc in edits})
         texts = fetch_contents(client, host, ids)
     edits = [rc for rc in edits if rc["revid"] in texts and rc["old_revid"] in texts]
-    existing = ({r["number"]: r["split"] for r in load_dataset(cfg, data_dir)[1]}
-                if (out_dir / "issues.jsonl").exists() else {})
+    existing = (
+        {r["number"]: r["split"] for r in load_dataset(cfg, data_dir)[1]}
+        if (out_dir / "issues.jsonl").exists()
+        else {}
+    )
     split = assign_split(cfg.key, [rc["revid"] for rc in edits], existing)
-    rows = [{
-        "number": rc["revid"],
-        "title": rc["title"],
-        "body": edit_body(rc, texts[rc["old_revid"]], texts[rc["revid"]], cfg.body_max_chars),
-        "created_at": rc["timestamp"],
-        "state": "reverted" if label_for(rc.get("tags", [])) == "revert" else "live",
-        "url": f"https://{host}/w/index.php?diff={rc['revid']}",
-        "labels": [label_for(rc.get("tags", []))],
-        "first_pass": [],
-        "corrected": False,
-        "split": split[rc["revid"]],
-    } for rc in edits]
+    rows = [
+        {
+            "number": rc["revid"],
+            "title": rc["title"],
+            "body": edit_body(rc, texts[rc["old_revid"]], texts[rc["revid"]], cfg.body_max_chars),
+            "created_at": rc["timestamp"],
+            "state": "reverted" if label_for(rc.get("tags", [])) == "revert" else "live",
+            "url": f"https://{host}/w/index.php?diff={rc['revid']}",
+            "labels": [label_for(rc.get("tags", []))],
+            "first_pass": [],
+            "corrected": False,
+            "split": split[rc["revid"]],
+        }
+        for rc in edits
+    ]
     path = out_dir / "issues.jsonl"
     with path.open("w") as f:
         for r in rows:

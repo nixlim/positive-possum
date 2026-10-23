@@ -19,10 +19,18 @@ def _client(create):
 
 
 def _message(content, stop_reason="end_turn"):
-    return Message.model_validate({
-        "id": "m1", "type": "message", "role": "assistant", "model": "adapter-v1", "content": content,
-        "stop_reason": stop_reason, "stop_sequence": None, "usage": {"input_tokens": 10, "output_tokens": 3},
-    })
+    return Message.model_validate(
+        {
+            "id": "m1",
+            "type": "message",
+            "role": "assistant",
+            "model": "adapter-v1",
+            "content": content,
+            "stop_reason": stop_reason,
+            "stop_sequence": None,
+            "usage": {"input_tokens": 10, "output_tokens": 3},
+        }
+    )
 
 
 def _text(s):
@@ -50,15 +58,22 @@ def test_request_uses_structured_output_and_the_issue_session(monkeypatch):
     classify(_client(create), "godotengine/godot", LABELS, ISSUE, "", model="claude-sonnet-5-5")
     assert seen["model"] == "claude-sonnet-5-5"
     assert seen["output_config"]["format"]["type"] == "json_schema"
-    assert seen["output_config"]["format"]["schema"]["properties"]["labels"]["items"]["enum"] == ["bug", "crash"]
+    assert seen["output_config"]["format"]["schema"]["properties"]["labels"]["items"]["enum"] == [
+        "bug",
+        "crash",
+    ]
     assert seen["metadata"] == {"user_id": "godotengine/godot#9"}
     assert [m["role"] for m in seen["messages"]] == ["user"]
 
 
 def test_gateway_error_keeps_headers_and_mubit_request_id(tmp_path):
     body = {"type": "error", "error": {"type": "middleware_gateway_error", "code": "starter_credit_option"}}
-    resp = httpx.Response(403, headers={"x-middleware-request-id": "mreq_err", "x-should-retry": "false"},
-                          json=body, request=httpx.Request("POST", URL))
+    resp = httpx.Response(
+        403,
+        headers={"x-middleware-request-id": "mreq_err", "x-should-retry": "false"},
+        json=body,
+        request=httpx.Request("POST", URL),
+    )
 
     def create(**req):
         raise anthropic.APIStatusError("refused", response=resp, body=body)
@@ -96,7 +111,9 @@ def test_malformed_replies_are_logged_errors(tmp_path):
         "unparseable body": _bad_parse,
     }
     for i, (name, parse) in enumerate(cases.items()):
-        res = classify(_client(lambda **req: _raw(parse)), "godotengine/godot", LABELS, ISSUE, "")
+        res = classify(
+            _client(lambda parse=parse, **req: _raw(parse)), "godotengine/godot", LABELS, ISSUE, ""
+        )
         assert res.error and res.labels == [], name
         s, (rid, served, err, headers, _, _) = _logged(tmp_path / str(i), res)
         assert rid == "mreq_ok" and json.loads(headers)["x-middleware-request-id"] == "mreq_ok", name

@@ -6,8 +6,18 @@ from triage.wiki import diff_text, edit_body, is_content_edit, label_for, select
 
 
 def _rc(revid, tags=(), ts="2026-10-20T10:00:00Z", old=1, **kw):
-    return {"revid": revid, "old_revid": old, "tags": list(tags), "timestamp": ts, "title": f"Page {revid}",
-            "comment": "c", "userid": 5, "oldlen": 10, "newlen": 12, **kw}
+    return {
+        "revid": revid,
+        "old_revid": old,
+        "tags": list(tags),
+        "timestamp": ts,
+        "title": f"Page {revid}",
+        "comment": "c",
+        "userid": 5,
+        "oldlen": 10,
+        "newlen": 12,
+        **kw,
+    }
 
 
 def test_label_for_reverted_tag():
@@ -16,8 +26,12 @@ def test_label_for_reverted_tag():
 
 
 def test_select_edits_balances_and_drops_reverting_edits():
-    reverted = [_rc(10, ["mw-reverted"]), _rc(11, ["mw-reverted", "mw-undo"]), _rc(12, ["mw-reverted"]),
-                _rc(13, ["mw-reverted"])]
+    reverted = [
+        _rc(10, ["mw-reverted"]),
+        _rc(11, ["mw-reverted", "mw-undo"]),
+        _rc(12, ["mw-reverted"]),
+        _rc(13, ["mw-reverted"]),
+    ]
     others = [_rc(20), _rc(21, ["mw-rollback"]), _rc(22, old=0), _rc(23, ["mw-reverted"]), _rc(24), _rc(25)]
     out = select_edits(reverted, others, 4)
     ids = {rc["revid"] for rc in out}
@@ -46,15 +60,20 @@ def test_build_dataset_with_mocked_api(monkeypatch, tmp_path):
         if params.get("list") == "recentchanges":
             if params.get("rctag") == "mw-reverted":
                 return {"query": {"recentchanges": [_rc(2, ["mw-reverted"], old=1)]}}
-            return {"query": {"recentchanges": [_rc(4, old=3), _rc(2, ["mw-reverted"], old=1), _rc(9, old=8)]}}
-        revs = [{"revid": r, "slots": {"main": {"content": texts[r]}}} for r in map(int, params["revids"].split("|"))
-                if r in texts]
+            return {
+                "query": {"recentchanges": [_rc(4, old=3), _rc(2, ["mw-reverted"], old=1), _rc(9, old=8)]}
+            }
+        revs = [
+            {"revid": r, "slots": {"main": {"content": texts[r]}}}
+            for r in map(int, params["revids"].split("|"))
+            if r in texts
+        ]
         return {"query": {"pages": [{"revisions": revs}]}}
 
     monkeypatch.setattr(wiki, "_api", fake_api)
     monkeypatch.setattr(wiki, "_client", lambda: httpx_dummy())
     path = wiki.build_dataset(cfg, 4, data_dir=tmp_path)
-    rows = [json.loads(l) for l in path.read_text().splitlines()]
+    rows = [json.loads(lab) for lab in path.read_text().splitlines()]
     assert {r["number"]: r["labels"] for r in rows} == {2: ["revert"], 4: ["keep"]}  # 9: content missing
     assert "+VANDAL" in next(r for r in rows if r["number"] == 2)["body"]
     assert json.loads((tmp_path / "enwiki" / "labels.json").read_text()) == wiki.LABELS

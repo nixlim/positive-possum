@@ -1,5 +1,6 @@
 """Scoring multi-label predictions against maintainer labels, and agreement
 between two runs (the routing-switch signal)."""
+
 from __future__ import annotations
 
 from statistics import median
@@ -34,16 +35,17 @@ def score(preds: Labels, truth: Labels) -> dict:
     precision = tp / (tp + fp) if tp + fp else 0.0
     recall = tp / (tp + fn) if tp + fn else 0.0
     f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
-    return {"n": n, "exact": exact / n, "precision": precision,
-            "recall": recall, "f1": f1}
+    return {"n": n, "exact": exact / n, "precision": precision, "recall": recall, "f1": f1}
 
 
 def score_by_family(preds: Labels, truth: Labels) -> dict[str, dict]:
-    families = {_family(l) for ls in truth.values() for l in ls} | {_family(l) for ls in preds.values() for l in ls}
+    families = {_family(lab) for ls in truth.values() for lab in ls} | {
+        _family(lab) for ls in preds.values() for lab in ls
+    }
     out = {}
     for fam in sorted(families):
-        p = {i: [l for l in ls if _family(l) == fam] for i, ls in preds.items()}
-        t = {i: [l for l in ls if _family(l) == fam] for i, ls in truth.items()}
+        p = {i: [lab for lab in ls if _family(lab) == fam] for i, ls in preds.items()}
+        t = {i: [lab for lab in ls if _family(lab) == fam] for i, ls in truth.items()}
         out[fam] = score(p, t)
     return out
 

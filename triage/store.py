@@ -1,9 +1,10 @@
 """SQLite log of every call and every eval run. This is the evidence trail."""
+
 from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from .config import DATA_DIR
@@ -14,7 +15,7 @@ CREATE TABLE IF NOT EXISTS calls (
   id INTEGER PRIMARY KEY,
   ts TEXT NOT NULL,
   run_id TEXT NOT NULL,
-  kind TEXT NOT NULL,          -- eval | replay | correct
+  kind TEXT NOT NULL,          -- eval | replay | correct | live
   route TEXT NOT NULL,         -- always mubit: there is no other egress
   repo TEXT NOT NULL,
   issue INTEGER NOT NULL,
@@ -28,7 +29,8 @@ CREATE TABLE IF NOT EXISTS calls (
   truth TEXT,                  -- JSON list, when known
   error TEXT,
   headers TEXT,
-  raw TEXT
+  raw TEXT,
+  extra TEXT                   -- JSON object: reply fields besides labels
 );
 CREATE INDEX IF NOT EXISTS calls_run ON calls(run_id);
 CREATE INDEX IF NOT EXISTS calls_repo_route ON calls(repo, route, ts);
@@ -46,7 +48,7 @@ CREATE TABLE IF NOT EXISTS runs (
 
 
 def now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 class Store:
@@ -55,21 +57,72 @@ class Store:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(path)
         self.db.executescript(SCHEMA)
+        # Logs written before the `extra` column existed.
+        if "extra" not in {r[1] for r in self.db.execute("PRAGMA table_info(calls)")}:
+            self.db.execute("ALTER TABLE calls ADD COLUMN extra TEXT")
+            self.db.commit()
 
-    def log_call(self, run_id: str, kind: str, repo: str, issue: int, r: CallResult,
-                 truth: list[str] | None = None) -> None:
+    def log_call(
+        self, run_id: str, kind: str, repo: str, issue: int, r: CallResult, truth: list[str] | None = None
+    ) -> None:
         self.db.execute(
             "INSERT INTO calls (ts, run_id, kind, route, repo, issue, model_asked, model_served, request_id,"
-            " latency_ms, prompt_tokens, completion_tokens, labels, truth, error, headers, raw)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (now(), run_id, kind, r.route, repo, issue, r.model_asked, r.model_served, r.request_id,
-             r.latency_ms, r.prompt_tokens, r.completion_tokens, json.dumps(r.labels),
-             json.dumps(truth) if truth is not None else None, r.error,
-             json.dumps(r.headers), json.dumps(r.raw) if r.raw is not None else None),
+            " latency_ms, prompt_tokens, completion_tokens, labels, truth, error, headers, raw, extra)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                now(),
+                run_id,
+                kind,
+                r.route,
+                repo,
+                issue,
+                r.model_asked,
+                r.model_served,
+                r.request_id,
+                r.latency_ms,
+                r.prompt_tokens,
+                r.completion_tokens,
+                json.dumps(r.labels),
+                json.dumps(truth) if truth is not None else None,
+                r.error,
+                json.dumps(r.headers),
+                json.dumps(r.raw) if r.raw is not None else None,
+                json.dumps(r.extra) if r.extra else None,
+            ),
         )
         self.db.commit()
 
-    def log_run(self, run_id: str, kind: str, route: str, repo: str, n: int, errors: int, metrics: dict) -> None:
+    def calls_since(self, repo: str, kinds: tuple[str, ...], since_ts: str) -> list[dict]:
+        """Answered and errored calls of the given kinds since an ISO timestamp, oldest first."""
+        marks = ",".join("?" * len(kinds))
+        rows = self.db.execute(
+            f"SELECT ts, kind, issue, model_asked, model_served, latency_ms, prompt_tokens,"
+            f" completion_tokens, labels, truth, error, extra, request_id FROM calls"
+            f" WHERE repo=? AND kind IN ({marks}) AND ts>=? ORDER BY ts, id",
+            (repo, *kinds, since_ts),
+        )
+        return [
+            {
+                "ts": r[0],
+                "kind": r[1],
+                "issue": r[2],
+                "model_asked": r[3],
+                "model_served": r[4],
+                "latency_ms": r[5],
+                "prompt_tokens": r[6],
+                "completion_tokens": r[7],
+                "labels": json.loads(r[8]),
+                "truth": json.loads(r[9]) if r[9] else None,
+                "error": r[10],
+                "extra": json.loads(r[11]) if r[11] else {},
+                "request_id": r[12],
+            }
+            for r in rows
+        ]
+
+    def log_run(
+        self, run_id: str, kind: str, route: str, repo: str, n: int, errors: int, metrics: dict
+    ) -> None:
         self.db.execute(
             "INSERT OR REPLACE INTO runs VALUES (?,?,?,?,?,?,?,?)",
             (run_id, now(), kind, route, repo, n, errors, json.dumps(metrics)),
@@ -98,8 +151,17 @@ class Store:
         q += " ORDER BY ts"
         # `calls` counts every call in the run; `n` is the scored (non-errored) count.
         return [
-            {"run_id": r[0], "ts": r[1], "kind": r[2], "route": r[3], "repo": r[4],
-             **json.loads(r[7]), "n": r[5] - r[6], "calls": r[5], "errors": r[6]}
+            {
+                "run_id": r[0],
+                "ts": r[1],
+                "kind": r[2],
+                "route": r[3],
+                "repo": r[4],
+                **json.loads(r[7]),
+                "n": r[5] - r[6],
+                "calls": r[5],
+                "errors": r[6],
+            }
             for r in self.db.execute(q, args)
         ]
 

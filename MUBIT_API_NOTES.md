@@ -37,16 +37,24 @@ No CORS: call from a server, not a browser.
 
 ## Facts the triage request relies on (check: `uv run python mubit_smoke.py`)
 
-`mubit_smoke.py` sends the exact request `triage.prompt.build_request` builds,
-through `triage.llm.client()`, plus two probes, and prints status, Mubit error
-code and `x-middleware-request-id` for each. It uses its own repo name, so its
-calls form their own task and never count toward a real repo's task. Write the
-date and the request ids here after each check. Until then these are **unchecked**
-on the starter credit:
+`mubit_smoke.py` sends the exact requests `triage.prompt.build_request` builds
+(the github shape and the wiki shape), through `triage.llm.client()`, plus two
+probes, and prints status, Mubit error code and `x-middleware-request-id` for each.
+It uses its own repo names, so its calls form their own tasks and never count
+toward a real repo's task. Re-run it after any change to the request shape or an
+output schema, and write the date and the request ids here after each check:
+
+| Date | Check 1 (github) | Check 2 (wiki) | Check 3 (forced tool) | Check 4 (2nd credential) |
+| --- | --- | --- | --- | --- |
+| not yet run | | | | |
+
+Until a row is filled in, these are **unchecked** on the starter credit:
 
 1. `POST /v1/messages` with `output_config.format` (`json_schema`) and
    `metadata.user_id` together, model claude-sonnet-5-5: accepted, reply is JSON
    matching the schema. If refused, every triage call errors and every run scores n=0.
+   This includes the wiki schema, whose required `reason` and `confidence` string
+   enums sit next to `labels` (smoke check 2).
 2. claude-sonnet-5-5 refuses forced tool choice (`tool_choice` type `tool`/`any`).
    This is why the request uses `output_config` instead of a forced tool.
 3. A second credential next to the Mubit key gets `401` with code
@@ -56,6 +64,24 @@ on the starter credit:
    (the docs say "output format" without naming the Anthropic field). There is no
    read API: confirm in the console's Tasks page that smoke calls with the same
    schema land in one task.
+
+## Deliberate task forks
+
+Each entry is a change to a frozen system template or output schema in
+`triage/prompt.py`. It starts a new Mubit task with a kept-example count of zero.
+
+- **2026-10-23, enwiki (wiki kind)**: the patrol desk needs the reason and confidence
+  behind each verdict, so the wiki template gained one rule line ("Also give the main
+  reason for your verdict and how sure you are...") and the wiki output schema gained
+  required `reason` (8-value enum) and `confidence` (`low`/`medium`/`high`).
+  The test-fixture system prompt SHA in `tests/test_prompt.py` went from
+  `a1ee2c79…` to `f64566d5…`. Consequences: every enwiki call logged before this
+  change has a different `task_sha`, so `reference_run` will not use those eval runs
+  as a reference (the first eval run after the change starts a new baseline), and
+  the examples Mubit kept for the old enwiki task do not count toward the new one.
+  The enwiki task was one commit old (`a82a204`), so little is lost. The github
+  task identity is unchanged: `output_schema(kind="github")` serialises
+  byte-identically and the godot frozen-hash test still passes.
 
 ## Starter-credit limits observed
 
