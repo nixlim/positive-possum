@@ -44,6 +44,19 @@ CREATE TABLE IF NOT EXISTS runs (
   errors INTEGER NOT NULL,
   metrics TEXT NOT NULL        -- JSON
 );
+CREATE TABLE IF NOT EXISTS outcomes (     -- what Wikipedia did after a live verdict
+  repo TEXT NOT NULL,
+  issue INTEGER NOT NULL,
+  verdict_ts TEXT,
+  verdict TEXT,
+  truth TEXT NOT NULL,         -- keep | revert | gone (revision no longer returned)
+  reverted_at TEXT,
+  reverted_by TEXT,
+  revert_revid INTEGER,
+  lead_s INTEGER,              -- reverted_at minus verdict_ts, when both are known
+  checked_at TEXT NOT NULL,
+  PRIMARY KEY (repo, issue)
+);
 """
 
 
@@ -170,3 +183,40 @@ class Store:
             "SELECT COALESCE(model_served,'?'), COUNT(*) FROM calls WHERE run_id=? GROUP BY 1", (run_id,)
         )
         return dict(rows)
+
+    # ---- outcomes (live verdicts reconciled with Wikipedia) -------------------
+
+    OUTCOME_COLS = (
+        "issue",
+        "verdict_ts",
+        "verdict",
+        "truth",
+        "reverted_at",
+        "reverted_by",
+        "revert_revid",
+        "lead_s",
+    )
+
+    def pending_outcomes(self, repo: str) -> list[dict]:
+        """Answered live calls (first answer per edit) that have no outcome yet, oldest first."""
+        rows = self.db.execute(
+            "SELECT MIN(ts), issue, labels FROM calls WHERE repo=? AND kind='live' AND error IS NULL"
+            " AND issue NOT IN (SELECT issue FROM outcomes WHERE repo=?) GROUP BY issue ORDER BY 1",
+            (repo, repo),
+        )
+        return [{"ts": r[0], "issue": r[1], "labels": json.loads(r[2])} for r in rows]
+
+    def log_outcome(self, repo: str, o: dict) -> None:
+        self.db.execute(
+            "INSERT OR REPLACE INTO outcomes (repo, issue, verdict_ts, verdict, truth, reverted_at,"
+            " reverted_by, revert_revid, lead_s, checked_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (repo, *(o.get(c) for c in self.OUTCOME_COLS), now()),
+        )
+        self.db.commit()
+
+    def outcomes(self, repo: str) -> list[dict]:
+        cols = ", ".join(self.OUTCOME_COLS)
+        rows = self.db.execute(
+            f"SELECT {cols}, checked_at FROM outcomes WHERE repo=? ORDER BY verdict_ts", (repo,)
+        )
+        return [dict(zip((*self.OUTCOME_COLS, "checked_at"), r, strict=True)) for r in rows]

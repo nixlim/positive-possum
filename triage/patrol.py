@@ -6,6 +6,7 @@ view over that log plus an in-memory ring of recent cards."""
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import queue
 import threading
@@ -21,12 +22,14 @@ from .config import DATA_DIR, MODEL, RepoConfig
 from .github import load_dataset
 from .live import fetch_item, is_owned, iter_events, summarize
 from .llm import CallResult, classify, client
+from .reconcile import outcome_stats, reconcile
 from .store import Store
 from .wiki import LABELS, USER_AGENT
 
 WINDOW_HOURS = 6  # the stats window
 MAX_CARDS = 150
 QUEUE_DEPTH = 2  # edits waiting for the worker; the stream is faster than our call rate
+RECONCILE_EVERY_S = 600  # how often to ask Wikipedia what happened to our live verdicts
 
 
 def card_from(item: dict, res: CallResult, model: str) -> dict:
@@ -51,6 +54,7 @@ def card_from(item: dict, res: CallResult, model: str) -> dict:
         "error": res.error,
         "ts": datetime.now(UTC).isoformat(timespec="seconds"),
         "correction": None,
+        "outcome": None,
     }
 
 
@@ -83,6 +87,7 @@ class Patrol:
         self.loop = loop
         threading.Thread(target=self._reader, name="patrol-reader", daemon=True).start()
         threading.Thread(target=self._worker, name="patrol-worker", daemon=True).start()
+        threading.Thread(target=self._reconciler, name="patrol-reconciler", daemon=True).start()
 
     def stop(self) -> None:
         self.stopping.set()
@@ -134,6 +139,49 @@ class Patrol:
                     self._broadcast("log", {"text": f"edit skipped: {type(e).__name__}: {e}"[:200]})
                 time.sleep(max(0.0, self.min_interval - (time.monotonic() - t0)))
 
+    def _reconciler(self) -> None:
+        store = Store(self.data_dir / "calls.sqlite")
+        with httpx.Client(headers={"User-Agent": USER_AGENT}, timeout=30) as http:
+            while not self.stopping.wait(RECONCILE_EVERY_S):
+                with self.lock:
+                    desk = set(self.cards)
+                try:
+                    for written in reconcile(store, self.cfg, http, desk=desk):
+                        self.apply_outcomes(written)
+                # Wikipedia API hiccup (wiki._api raises SystemExit on an error payload): try again
+                except (Exception, SystemExit) as e:
+                    self._broadcast("log", {"text": f"reconcile skipped: {type(e).__name__}: {e}"[:200]})
+
+    def apply_outcomes(self, outcomes: list[dict]) -> None:
+        """Mark cards with Wikipedia's decision; a disagreement with a card still on the desk
+        is a correction from Wikipedia itself and runs the same loop as a patroller's click.
+        The outcomes are already in the store, so one failure must not skip the rest."""
+        for o in outcomes:
+            try:
+                self._apply_outcome(o)
+            except Exception as e:
+                self._broadcast("log", {"text": f"outcome {o['issue']}: {type(e).__name__}: {e}"[:200]})
+        if outcomes:
+            self._broadcast("stats", self.stats())
+
+    def _apply_outcome(self, o: dict) -> None:
+        with self.lock:
+            card = self.cards.get(o["issue"])
+            if not card:
+                return  # left the desk: the outcome only feeds the stats
+            card["outcome"] = {k: o[k] for k in ("truth", "reverted_at", "reverted_by", "lead_s")}
+            # "gone" (revision no longer visible) is not a revert we can teach from.
+            correct = (
+                o["truth"] in ("keep", "revert")
+                and card["verdict"] != o["truth"]
+                and card["correction"] is None
+            )
+        if correct:
+            with contextlib.suppress(KeyError, ValueError):  # left the desk, or a patroller won
+                self.verdict(o["issue"], o["truth"], source="wikipedia")
+                return  # _record broadcast the card
+        self._broadcast("card", card)
+
     def _handle(self, store: Store, http: httpx.Client, event: dict) -> None:
         item = fetch_item(http, event, self.cfg.body_max_chars)
         if item is None:
@@ -167,10 +215,11 @@ class Patrol:
             eval_issues = {r["number"] for r in rows if r["split"] == "eval"}
         return gl.load(self.cfg.key, eval_issues, self.data_dir)
 
-    def verdict(self, revid: int, verdict: str) -> dict:
-        """A patroller's click. Agreement is just recorded. Disagreement appends a guideline
-        line and re-sends the same edit in the same Mubit session, so the recorded reply
-        becomes the corrected answer: that is the only way a correction reaches Mubit.
+    def verdict(self, revid: int, verdict: str, source: str = "patroller") -> dict:
+        """A patroller's click (or, with source="wikipedia", what the wiki did next).
+        Agreement is just recorded. Disagreement appends a guideline line and re-sends the
+        same edit in the same Mubit session, so the recorded reply becomes the corrected
+        answer: that is the only way a correction reaches Mubit.
         Raises KeyError when the edit has left the desk, ValueError when it already has a
         verdict (a double click or a second tab must not write a second guideline)."""
         now = datetime.now(UTC).isoformat(timespec="seconds")
@@ -182,13 +231,14 @@ class Patrol:
                 raise ValueError(revid)
             old = card["verdict"]
             # Claimed under the lock; the disagreement branch fills in the re-send below.
-            card["correction"] = {"verdict": verdict, "changed": old != verdict, "ts": now}
+            card["correction"] = {"verdict": verdict, "changed": old != verdict, "source": source, "ts": now}
         if old == verdict:
             event = {
                 "type": "confirmed",
                 "number": revid,
                 "title": card["title"],
                 "verdict": verdict,
+                "source": source,
                 "ts": now,
             }
             return self._record(card, event)
@@ -212,12 +262,14 @@ class Patrol:
             "changed": True,
             "resent": resent,
             "served": res.model_served,
+            "source": source,
             "ts": now,
         }
         event = {
             "type": "correction",
             "number": revid,
             "title": card["title"],
+            "source": source,
             "old": old,
             "new": verdict,
             "resent": resent,
@@ -254,6 +306,7 @@ class Patrol:
         s["window_hours"] = WINDOW_HOURS
         s["dropped"] = self.dropped
         s["guidelines"] = self._guidelines().count("\n")
+        s["wikipedia"] = outcome_stats(store.outcomes(self.cfg.key))
         return s
 
     def snapshot(self) -> dict:

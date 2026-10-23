@@ -90,7 +90,9 @@ def test_summarize_measures_owned_share_and_projects_frontier_cost():
     adapter = live.summarize(
         [_call("2026-10-24T00:00:00+00:00", "claude-sonnet-5-5-adapter")], "claude-sonnet-5-5", now
     )
-    assert adapter["by_served"]["claude-sonnet-5-5-adapter"]["owned"] is True and adapter["owned_share"] == 1.0
+    assert (
+        adapter["by_served"]["claude-sonnet-5-5-adapter"]["owned"] is True and adapter["owned_share"] == 1.0
+    )
     # 3 answered calls at $0.0022 each over one hour -> 24x per day
     assert abs(s["frontier_cost_per_day_usd"] - round(3 * 0.0022 * 24, 2)) < 0.01
     assert s["owned_cost_per_day_usd"] is None

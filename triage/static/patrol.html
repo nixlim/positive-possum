@@ -46,6 +46,8 @@ pre{margin:8px 0 0;font:11.5px/1.4 "IBM Plex Mono",monospace;white-space:pre-wra
 .l.add{color:#bdf5c8;background:rgba(74,222,128,.12)}.l.del{color:#ffc3cd;background:rgba(255,84,112,.12);text-decoration:line-through;opacity:.8}
 .l.hunk{color:var(--hunk)}
 .corr{margin-top:8px;font-size:11px;padding:6px 8px;border:1px dashed var(--owned);color:var(--owned)}
+.wp{margin-top:6px;font-size:11px;padding:5px 8px;border-left:2px solid var(--dim);color:var(--dim)}
+.wp.hit{color:var(--keep);border-left-color:var(--keep)}.wp.miss{color:var(--revert);border-left-color:var(--revert)}
 /* gauge */
 .gauge{display:flex;flex-direction:column;align-items:center;padding:22px 16px 10px}
 .ring{position:relative;width:210px;height:210px}
@@ -143,14 +145,31 @@ function diffHtml(d) {
     return '<span class="l ' + k + '">' + esc(l) + '</span>';
   }).join("\n");
 }
+function dur(s) { return s < 60 ? s + " s" : Math.round(s / 60) + " min"; }
+function leadHtml(s) {
+  if (s == null) return "";
+  if (s > 0) return " · " + dur(s) + " after we flagged it · we were ahead";
+  if (s < 0) return " · wikipedia was first by " + dur(-s);
+  return " · at the moment we flagged it";
+}
+function outcomeHtml(c) {
+  const o = c.outcome; if (!o) return "";
+  if (o.truth === "revert") {
+    const hit = c.verdict === "revert";
+    // lead is a lower bound: the first revert after our edit on the page may undo a later edit
+    return '<div class="wp ' + (hit ? "hit" : "miss") + '" title="lead uses the first revert on the page after this edit, so it is a lower bound">wikipedia reverted this' + (o.reverted_by ? ' (' + esc(o.reverted_by) + ')' : "") + (hit ? leadHtml(o.lead_s) : " · we said " + esc(c.verdict || "nothing")) + '</div>';
+  }
+  if (o.truth === "gone") return '<div class="wp">revision no longer visible on wikipedia · not scored</div>';
+  return '<div class="wp' + (c.verdict === "keep" ? "" : " miss") + '">still standing on wikipedia' +(c.verdict === "keep" ? "" : " · our flag was a false alarm") + '</div>';
+}
 function cardHtml(c) {
   const who = c.anon ? "anonymous IP" : "registered";
   const served = c.served ? '<span class="tag ' + (c.owned ? "owned" : "frontier") + '">' + (c.owned ? "owned · " : "frontier · ") + esc(c.served) + '</span>' : "";
-  const corr = c.correction ? '<div class="corr">patroller said ' + esc(c.correction.verdict) + (c.correction.changed ? ' · guideline written · re-sent → ' + esc(c.correction.resent || "?") + (c.correction.resent === c.correction.verdict ? " ✓" : " ✗") : " · confirmed") + '</div>' : "";
+  const corr = c.correction ? '<div class="corr">' + (c.correction.source === "wikipedia" ? "wikipedia said " : "patroller said ") +esc(c.correction.verdict) + (c.correction.changed ? ' · guideline written · re-sent → ' + esc(c.correction.resent || "?") + (c.correction.resent === c.correction.verdict ? " ✓" : " ✗") : " · confirmed") + '</div>' : "";
   return '<div class="row"><a class="title" href="' + esc(c.url) + '" target="_blank" rel="noopener">' + esc(c.title) + '</a>' + chip(c) + served + '</div>'
     + '<div class="sub">' + who + ' · ' + esc(c.comment || "(no summary)") + ' · ' + c.latency_ms + ' ms · ' + c.tokens + ' tok' + (c.error ? ' · ' + esc(c.error) : "") + '</div>'
     + '<div class="conf ' + esc(c.confidence || "") + '"><i style="width:' + (CONF[c.confidence] || 0) + '%"></i></div>'
-    + '<pre>' + diffHtml(c.diff) + '</pre>' + corr;
+    + '<pre>' + diffHtml(c.diff) + '</pre>' + corr + outcomeHtml(c);
 }
 function upsertCard(c, fresh) {
   let el = document.querySelector('[data-id="' + c.number + '"]');
@@ -197,13 +216,17 @@ function stats(s) {
   rows.push(['<dt>owned model cost</dt><dd class="na">' + (money(s.owned_cost_per_day_usd) || "not published by Mubit") + '</dd>']);
   rows.push(['<dt>calls · errors · dropped</dt><dd>' + s.calls + ' · ' + s.errors + ' · ' + s.dropped + '</dd>']);
   rows.push(['<dt>corrections · guideline lines</dt><dd class="owned">' + s.corrections + ' · ' + s.guidelines + '</dd>']);
+  const w = s.wikipedia || {};
+  rows.push(['<dt>wikipedia agreed with our flags</dt><dd>' + (w.flagged ? w.hits + ' of ' + w.flagged + ' (' + Math.round(w.precision * 100) + '%)' : '–') + '</dd>']);
+  rows.push(['<dt>reverts we missed · settled edits</dt><dd>' + (w.settled ? w.missed + ' · ' + w.settled : '–') + '</dd>']);
+  rows.push(['<dt title="over every hit with a known lead, negative when wikipedia reverted first; a lower bound, since the first revert after our edit on the page may undo a later edit">median lead over wikipedia (≥) · ahead · behind</dt><dd class="owned">' + (w.median_lead_min != null ? w.median_lead_min + ' min · ' + w.ahead + ' · ' + w.behind : '–') + '</dd>']);
   $("kv").innerHTML = rows.join("");
   $("costnote").textContent = "last " + s.window_hours + " h · frontier priced at Sonnet 5.5 list ($2 / $10 per MTok) from logged tokens · who answered is read from the served model string Mubit returns";
 }
 function feedItem(e) {
   const t = '<time>' + e.ts.slice(11, 19) + '</time>';
   if (e.type === "confirmed") return '<div class="ev confirmed">' + t + 'confirmed <b>' + esc(e.verdict) + '</b> on “' + esc(e.title) + '”</div>';
-  return '<div class="ev correction">' + t + 'correction received · ' + esc(e.old || "?") + ' <span class="arrow">→</span> ' + esc(e.new)
+  return '<div class="ev correction">' + t + (e.source === "wikipedia" ? (e.new === "revert" ? 'wikipedia reverted it · ' : 'wikipedia kept it · ') : 'correction received · ') + esc(e.old || "?") + ' <span class="arrow">→</span> ' + esc(e.new)
     + ' · guideline #' + e.guidelines_total + ' written · re-sent through Mubit → <b>' + esc(e.resent || "?") + '</b> ' + (e.agrees ? "✓" : "✗") + (e.served ? ' (' + esc(e.served) + ')' : "")
     + '<span class="q">' + esc(e.guideline) + '</span></div>';
 }

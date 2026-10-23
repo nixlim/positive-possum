@@ -78,6 +78,23 @@ def cmd_report(a):
         print(render_families(store, a.families))
 
 
+def cmd_reconcile(a):
+    from .reconcile import outcome_stats, reconcile
+    from .wiki import _client
+
+    cfg = repo(a.repo)
+    if cfg.kind != "wiki":
+        raise SystemExit("reconcile only applies to wiki repos")
+    store = Store()
+    with _client() as http:
+        for written in reconcile(store, cfg, http):
+            for o in written:
+                lead = o["lead_s"]
+                when = "" if lead is None else f"{abs(lead) // 60} min {'ahead' if lead >= 0 else 'behind'}"
+                print(f"{o['issue']}: we said {o['verdict']}, wikipedia says {o['truth']} {when}")
+    print(json.dumps(outcome_stats(store.outcomes(cfg.key))))
+
+
 def cmd_serve(a):
     cfg = repo(a.repo)
     if cfg.kind != "wiki":
@@ -142,6 +159,13 @@ def main(argv=None):
     s.add_argument("--families", metavar="RUN_ID", help="also show per-label-family scores for a run")
     s.set_defaults(fn=cmd_report)
 
+    s = sub.add_parser(
+        "reconcile",
+        help="settle live verdicts against what Wikipedia did next (offline: while `serve` runs, "
+        "its own reconciler does this and also marks and corrects the desk cards)",
+    )
+    s.add_argument("--repo", default="enwiki", choices=REPOS)
+    s.set_defaults(fn=cmd_reconcile)
     s = sub.add_parser("serve", help="live patrol desk: Wikimedia stream -> Mubit -> browser")
     s.add_argument("--repo", default="enwiki", choices=REPOS)
     s.add_argument("--host", default="127.0.0.1")
