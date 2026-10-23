@@ -27,6 +27,16 @@ GitHub access uses `GITHUB_TOKEN` or the logged-in `gh` CLI.
 
 ## Workflow
 
+The shell profile on this machine exports `ANTHROPIC_BASE_URL` and
+`ANTHROPIC_CUSTOM_HEADERS` for other tools. The client ignores the base URL,
+but refuses to start while the custom headers variable is set, so clear both
+first:
+
+```
+unset ANTHROPIC_CUSTOM_HEADERS ANTHROPIC_BASE_URL
+set -a; . ./.env; set +a
+```
+
 ```
 uv run triage pull --repo godot --n 300        # data/godot/{labels.json,issues.jsonl}
 uv run triage eval --repo godot                 # through Mubit; the first provider-served run is the reference
