@@ -11,3 +11,5 @@ data/raw/
 # claude-mem writes empty CLAUDE.md stubs into every directory
 */**/CLAUDE.md
 */CLAUDE.md
+# private notes, never committed
+.local.md
