@@ -16,6 +16,9 @@ Mubit and measure, from outside Mubit, when its task-adapted model starts servin
   model casually: Mubit groups calls into tasks by model + system prompt + output schema, and any
   change forks a new task with a fresh kept-example count. Per-call variation goes in the user
   message only.
+- Two task kinds share the harness: `github` (issue tagging, `triage/github.py`) and `wiki`
+  (Wikipedia edit patrol keep/revert, `triage/wiki.py`, ground truth from the `mw-reverted`
+  tag). `RepoConfig.kind` selects the fetcher and the frozen prompt template.
 - `data/<repo>/` holds the committed dataset (labels and issues). `data/calls.sqlite` is the
   uncommitted evidence log. `data/guidelines/<repo>.md` accumulates maintainer corrections.
 - Facts about the Mubit API that were verified by hand are in `MUBIT_API_NOTES.md`.

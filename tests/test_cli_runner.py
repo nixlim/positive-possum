@@ -82,7 +82,7 @@ def test_reference_is_the_first_run_with_same_task_guidelines_and_model(monkeypa
         return guide["text"]
 
     monkeypatch.setattr(runner.gl, "load", load)
-    monkeypatch.setattr(runner, "classify", lambda c, *a, model: CallResult(["crash"], model, model, None, 5, None, None))
+    monkeypatch.setattr(runner, "classify", lambda c, *a, model, **kw: CallResult(["crash"], model, model, None, 5, None, None))
     store = Store(tmp_path / "t.sqlite")
     cfg = repo("godot")
 
@@ -122,7 +122,7 @@ def test_reference_must_be_served_by_the_provider(monkeypatch, tmp_path):
     monkeypatch.setattr(runner, "client", lambda: None)
     monkeypatch.setattr(runner.gl, "load", lambda key, eval_issues: "- rule A")
     served = {"by": "adapter-v1"}
-    monkeypatch.setattr(runner, "classify", lambda c, *a, model: CallResult(
+    monkeypatch.setattr(runner, "classify", lambda c, *a, model, **kw: CallResult(
         ["crash"], model, served["by"], None, 5, None, None))
     store = Store(tmp_path / "t.sqlite")
     cfg, model = repo("godot"), "claude-sonnet-5-5"
@@ -156,7 +156,7 @@ def _runner_with(monkeypatch, fail):
     monkeypatch.setattr(runner.gl, "load", lambda key, eval_issues: "")
     count = {"n": 0}
 
-    def classify(c, full_name, labels, issue, guide, model):
+    def classify(c, full_name, labels, issue, guide, model, kind="github"):
         count["n"] += 1
         if fail(issue["number"], count["n"]):
             return CallResult([], model, None, f"mreq_{issue['number']}", 7, None, None,

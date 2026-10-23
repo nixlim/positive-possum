@@ -24,7 +24,7 @@ def _run_id(kind: str, repo: str) -> str:
 
 def task_sha(cfg: RepoConfig, labels: list[dict]) -> str:
     """The Mubit task identity besides the model: system prompt + output schema."""
-    ident = system_prompt(cfg.full_name, labels) + json.dumps(output_schema(labels), sort_keys=True)
+    ident = system_prompt(cfg.full_name, labels, cfg.kind) + json.dumps(output_schema(labels), sort_keys=True)
     return hashlib.sha256(ident.encode()).hexdigest()[:12]
 
 
@@ -68,7 +68,7 @@ def run(cfg: RepoConfig, kind: str, store: Store, limit: int | None = None,
     run_id = _run_id(kind, cfg.key)
 
     def one(issue: dict) -> tuple[dict, CallResult]:
-        return issue, classify(c, cfg.full_name, labels, issue, guide, model=model)
+        return issue, classify(c, cfg.full_name, labels, issue, guide, model=model, kind=cfg.kind)
 
     results: list[tuple[dict, CallResult]] = []
     with ThreadPoolExecutor(max_workers=workers) as pool:

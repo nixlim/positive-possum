@@ -46,6 +46,17 @@ uv run triage watch --every 3600               # hourly Mubit evals for every re
 uv run triage report                            # timeline: accuracy, agreement, latency, served-by
 ```
 
+### Wikipedia edit patrol (`--repo enwiki`)
+
+The second task kind is recent-changes patrol: given a diff, the edit summary and
+the editor type, decide `keep` or `revert`. Ground truth is the community's own
+verdict: the MediaWiki `mw-reverted` tag on edits 12 hours to 29 days old. No key
+is needed, only a User-Agent. `triage pull --repo enwiki --n 200` fetches a
+balanced set (half reverted, half kept) with `revid` as the item number, and the
+same `eval`, `replay`, `correct`, `watch` and `report` commands apply. The task
+has its own frozen system prompt (`WIKI_SYSTEM_TEMPLATE`), so it is a separate
+Mubit task from the GitHub ones.
+
 Every call is logged to `data/calls.sqlite` with response headers, the served
 model string, the Mubit request id, latency and tokens. A change in the served
 model, or a drop in agreement with the reference run below the floor between

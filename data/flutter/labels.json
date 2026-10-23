@@ -1,0 +1,362 @@
+[
+ {
+  "name": "a: accessibility",
+  "description": "Accessibility, e.g. VoiceOver or TalkBack. (aka a11y)"
+ },
+ {
+  "name": "a: adaptivity",
+  "description": "Adapting to platform, screen size, input type, etc"
+ },
+ {
+  "name": "a: animation",
+  "description": "Animation APIs"
+ },
+ {
+  "name": "a: annoyance",
+  "description": "Repeatedly frustrating issues with non-experimental functionality"
+ },
+ {
+  "name": "a: assets",
+  "description": "Packaging, accessing, or using assets"
+ },
+ {
+  "name": "a: build",
+  "description": "Building flutter applications with the tool"
+ },
+ {
+  "name": "a: car",
+  "description": "Issues on car platforms"
+ },
+ {
+  "name": "a: china",
+  "description": "China and its Great Firewall"
+ },
+ {
+  "name": "a: debugging",
+  "description": "Debugging, breakpoints, expression evaluation"
+ },
+ {
+  "name": "a: desktop",
+  "description": "Running on desktop"
+ },
+ {
+  "name": "a: devtools",
+  "description": "DevTools related - suite of performance and debugging tools"
+ },
+ {
+  "name": "a: error message",
+  "description": "Error messages from the Flutter framework"
+ },
+ {
+  "name": "a: existing-apps",
+  "description": "Integration with existing apps via the add-to-app flow"
+ },
+ {
+  "name": "a: fidelity",
+  "description": "Matching the OEM platforms better"
+ },
+ {
+  "name": "a: first hour",
+  "description": "The first hour of using Flutter"
+ },
+ {
+  "name": "a: gamedev",
+  "description": "Issues related to game development with Flutter"
+ },
+ {
+  "name": "a: images",
+  "description": "Loading, displaying, rendering images"
+ },
+ {
+  "name": "a: internationalization",
+  "description": "Supporting other languages or locales. (aka i18n)"
+ },
+ {
+  "name": "a: layout",
+  "description": "SystemChrome and Framework's Layout Issues"
+ },
+ {
+  "name": "a: leak tracking",
+  "description": "Issues and PRs related to memory leaks detected by leak_tracker"
+ },
+ {
+  "name": "a: macros",
+  "description": "Dart Macros usage in Flutter"
+ },
+ {
+  "name": "a: mouse",
+  "description": "Issues related to using a mouse or mouse support"
+ },
+ {
+  "name": "a: multi window",
+  "description": "Issues related to multi window support"
+ },
+ {
+  "name": "a: null-safety",
+  "description": "Support for Dart's null safety feature"
+ },
+ {
+  "name": "a: platform-views",
+  "description": "Embedding Android/iOS views in Flutter apps"
+ },
+ {
+  "name": "a: plugins",
+  "description": "Support for writing, building, and running plugin packages"
+ },
+ {
+  "name": "a: production",
+  "description": "Issues experienced in live production apps"
+ },
+ {
+  "name": "a: quality",
+  "description": "A truly polished experience"
+ },
+ {
+  "name": "a: release",
+  "description": "Challenges faced when attempting to productionize an app"
+ },
+ {
+  "name": "a: size",
+  "description": "Reducing IPA/APK/JS sizes"
+ },
+ {
+  "name": "a: state restoration",
+  "description": "RestorationManager and related APIs"
+ },
+ {
+  "name": "a: tablet",
+  "description": "Tablets and landscape phones"
+ },
+ {
+  "name": "a: tests",
+  "description": "\"flutter test\", flutter_test, or one of our tests"
+ },
+ {
+  "name": "a: text input",
+  "description": "Entering text in a text field or keyboard related problems"
+ },
+ {
+  "name": "a: triage improvements",
+  "description": "Make GitHub issues easier to triage and more actionable"
+ },
+ {
+  "name": "a: tv",
+  "description": "Issues on TV platforms"
+ },
+ {
+  "name": "a: typography",
+  "description": "Text rendering, possibly libtxt"
+ },
+ {
+  "name": "a: video",
+  "description": "Video playback"
+ },
+ {
+  "name": "a: widget previews",
+  "description": "Issues related to the Widget Previewer tooling"
+ },
+ {
+  "name": "c: API break",
+  "description": "Backwards-incompatible API changes"
+ },
+ {
+  "name": "c: agentic-engineering",
+  "description": "Tooling, documentation, tests related to LLM use"
+ },
+ {
+  "name": "c: contributor-productivity",
+  "description": "Team-specific productivity, code health, technical debt."
+ },
+ {
+  "name": "c: crash",
+  "description": "Stack traces logged to the console"
+ },
+ {
+  "name": "c: dataloss",
+  "description": "Can result in the user losing their state"
+ },
+ {
+  "name": "c: disabled test",
+  "description": "Tracks the restoration of a disabled test"
+ },
+ {
+  "name": "c: fatal crash",
+  "description": "Crashes that terminate the process"
+ },
+ {
+  "name": "c: flake",
+  "description": "Tests that sometimes, but not always, incorrectly pass"
+ },
+ {
+  "name": "c: new feature",
+  "description": "Nothing broken; request for a new capability"
+ },
+ {
+  "name": "c: new widget",
+  "description": "Must also have \"c: new feature\". Request for a new widget."
+ },
+ {
+  "name": "c: parity",
+  "description": "Works on one platform but not another"
+ },
+ {
+  "name": "c: performance",
+  "description": "Relates to speed or footprint issues (see \"perf:\" labels)"
+ },
+ {
+  "name": "c: proposal",
+  "description": "A detailed proposal for a change to Flutter"
+ },
+ {
+  "name": "c: regression",
+  "description": "It was better in the past than it is now"
+ },
+ {
+  "name": "c: rendering",
+  "description": "UI glitches reported at the engine/skia or impeller rendering level"
+ },
+ {
+  "name": "c: tech-debt",
+  "description": "Technical debt, code quality, testing, etc."
+ },
+ {
+  "name": "c: tfw4",
+  "description": "Issues filed during the 'Try Flutter Web with WebAssembly' (TFW^4) campaign"
+ },
+ {
+  "name": "engine",
+  "description": "flutter/engine related. See also e: labels."
+ },
+ {
+  "name": "framework",
+  "description": "flutter/packages/flutter repository. See also f: labels."
+ },
+ {
+  "name": "package",
+  "description": "flutter/packages repository. See also p: labels."
+ },
+ {
+  "name": "platform-android",
+  "description": "Android applications specifically"
+ },
+ {
+  "name": "platform-bigsur",
+  "description": "Issues related to macOS Big Sur"
+ },
+ {
+  "name": "platform-chromebook",
+  "description": "Chromebook applications specifically"
+ },
+ {
+  "name": "platform-fuchsia",
+  "description": "Fuchsia code specifically"
+ },
+ {
+  "name": "platform-host-arm",
+  "description": "Building on an ARM-based platform"
+ },
+ {
+  "name": "platform-ios",
+  "description": "iOS applications specifically"
+ },
+ {
+  "name": "platform-linux",
+  "description": "Building on or for Linux specifically"
+ },
+ {
+  "name": "platform-macos",
+  "description": "Building on or for macOS specifically"
+ },
+ {
+  "name": "platform-target-arm",
+  "description": "Targeting an ARM-based platform"
+ },
+ {
+  "name": "platform-views: hc",
+  "description": "Issues specific to the Hybrid Composition platform views backend"
+ },
+ {
+  "name": "platform-views: hcpp",
+  "description": "Issues which affect the HCPP platform views backend"
+ },
+ {
+  "name": "platform-views: tlhc",
+  "description": "Issues specific to the Android Texture Layer Hybrid Composition platform views backend"
+ },
+ {
+  "name": "platform-views: vd",
+  "description": "Issues specific to the Android VirtualDisplay platform views backend"
+ },
+ {
+  "name": "platform-web",
+  "description": "Web applications specifically"
+ },
+ {
+  "name": "platform-windows",
+  "description": "Building on or for Windows specifically"
+ },
+ {
+  "name": "team-accessibility",
+  "description": "Owned by Framework Accessibility team (i.e. responsible for accessibility code in flutter/flutter)"
+ },
+ {
+  "name": "team-android",
+  "description": "Owned by Android platform team"
+ },
+ {
+  "name": "team-design",
+  "description": "Owned by Design Languages team"
+ },
+ {
+  "name": "team-devexp",
+  "description": "Owned by the Developer Experience team"
+ },
+ {
+  "name": "team-ecosystem",
+  "description": "Owned by Ecosystem team"
+ },
+ {
+  "name": "team-engine",
+  "description": "Owned by Engine team"
+ },
+ {
+  "name": "team-fluttergpu",
+  "description": "Owned by Flutter GPU team"
+ },
+ {
+  "name": "team-framework",
+  "description": "Owned by Framework team"
+ },
+ {
+  "name": "team-ios",
+  "description": "Owned by iOS platform team"
+ },
+ {
+  "name": "team-linux",
+  "description": "Owned by the Linux platform team"
+ },
+ {
+  "name": "team-macos",
+  "description": "Owned by the macOS platform team"
+ },
+ {
+  "name": "team-text-input",
+  "description": "Owned by Text Input team"
+ },
+ {
+  "name": "team-tool",
+  "description": "Owned by Flutter Tool team"
+ },
+ {
+  "name": "team-web",
+  "description": "Owned by Web platform team"
+ },
+ {
+  "name": "team-windows",
+  "description": "Owned by the Windows platform team"
+ },
+ {
+  "name": "tool",
+  "description": "Affects the \"flutter\" command-line tool. See also t: labels."
+ }
+]

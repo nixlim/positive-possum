@@ -9,6 +9,7 @@ import time
 from . import guidelines as gl
 from .config import DATA_DIR, MODEL, REPOS, repo
 from .github import build_dataset, load_dataset
+from .wiki import build_dataset as build_wiki_dataset
 from .llm import classify, client
 from .report import render, render_families
 from .runner import run
@@ -16,12 +17,13 @@ from .store import Store
 
 
 def cmd_pull(a):
-    path = build_dataset(repo(a.repo), a.n)
-    labels, rows = load_dataset(repo(a.repo))
+    cfg = repo(a.repo)
+    path = (build_wiki_dataset if cfg.kind == "wiki" else build_dataset)(cfg, a.n)
+    labels, rows = load_dataset(cfg)
     n_eval = sum(r["split"] == "eval" for r in rows)
     n_corr = sum(r["corrected"] for r in rows)
-    print(f"wrote {path}: {len(rows)} issues ({n_eval} eval, {len(rows) - n_eval} train), "
-          f"{len(labels)} target labels, {n_corr} issues with maintainer corrections after first pass")
+    print(f"wrote {path}: {len(rows)} items ({n_eval} eval, {len(rows) - n_eval} train), "
+          f"{len(labels)} target labels, {n_corr} with maintainer corrections after first pass")
 
 
 def cmd_eval(a):
@@ -54,7 +56,7 @@ def cmd_correct(a):
     line = gl.add_correction(cfg.key, issue, predicted, final)
     print("guideline added:", line)
     guide = gl.load(cfg.key, eval_issues={r["number"] for r in rows if r["split"] == "eval"})
-    res = classify(client(), cfg.full_name, labels, issue, guide, model=a.model)
+    res = classify(client(), cfg.full_name, labels, issue, guide, model=a.model, kind=cfg.kind)
     store.log_call(f"correct-{cfg.key}-{a.issue}", "correct", cfg.key, a.issue, res, truth=final)
     print(f"re-sent through Mubit: pred={res.labels} served_by={res.model_served} req={res.request_id}")
 
@@ -93,7 +95,7 @@ def main(argv=None):
     p = argparse.ArgumentParser(prog="triage")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    s = sub.add_parser("pull", help="pull issues and labels from GitHub into data/<repo>/")
+    s = sub.add_parser("pull", help="pull issues (GitHub) or edits (wiki) into data/<repo>/")
     s.add_argument("--repo", required=True, choices=REPOS)
     s.add_argument("--n", type=int, default=300)
     s.set_defaults(fn=cmd_pull)

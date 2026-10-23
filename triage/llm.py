@@ -69,9 +69,9 @@ def parse_labels(content: str, allowed: set[str]) -> tuple[list[str], list[str]]
 
 
 def classify(client: Anthropic, full_name: str, labels: list[dict], issue: dict,
-             guidelines: str, model: str = MODEL) -> CallResult:
+             guidelines: str, model: str = MODEL, kind: str = "github") -> CallResult:
     """Always returns a CallResult; any failure is recorded in `error`, never raised."""
-    req = build_request(model, full_name, labels, issue, guidelines)
+    req = build_request(model, full_name, labels, issue, guidelines, kind)
     allowed = {l["name"] for l in labels}
     res = CallResult([], model, None, None, 0, None, None)
     t0 = time.perf_counter()

@@ -33,8 +33,8 @@ def guideline_line(issue: dict, predicted: list[str], final: list[str]) -> str:
     if removed:
         parts.append("drop " + ", ".join(removed))
     change = "; ".join(parts) or "keep labels as predicted"
-    return (f"- (#{issue['number']}) For issues like \"{issue['title']}\": {change} "
-            f"(maintainer set {', '.join(final) or 'none'}).")
+    return (f"- (#{issue['number']}) For items like \"{issue['title']}\": {change} "
+            f"(final labels: {', '.join(final) or 'none'}).")
 
 
 def add_correction(repo_key: str, issue: dict, predicted: list[str], final: list[str],

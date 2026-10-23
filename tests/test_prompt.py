@@ -39,6 +39,22 @@ def test_real_godot_task_identity_is_frozen():
     assert _sha(json.dumps(output_schema(labels), sort_keys=True)) == GODOT_SCHEMA_SHA
 
 
+WIKI_LABELS = [{"name": "keep", "description": "stays"}, {"name": "revert", "description": "undone"}]
+WIKI_SYSTEM_SHA = "a1ee2c7968e26bc4e13cd130ca4d5e64ee2f1143951becd923d6db36f9d5ada0"
+EDIT = {"number": 1381634663, "title": "Compsopogonophyceae", "body": "Editor: anonymous (IP)\nDiff:\n+lol"}
+
+
+def test_wiki_prompt_is_frozen_and_separate_from_github():
+    assert _sha(system_prompt("en.wikipedia.org", WIKI_LABELS, "wiki")) == WIKI_SYSTEM_SHA
+    req = build_request("claude-sonnet-5-5", "en.wikipedia.org", WIKI_LABELS, EDIT, "- rule", kind="wiki")
+    assert "recent-changes patroller for en.wikipedia.org" in req["system"]
+    assert "GitHub" not in req["system"]
+    user = req["messages"][0]["content"]
+    assert user.startswith('Patroller guidelines:\n- rule\n\nEdit 1381634663 to "Compsopogonophyceae"\n\nEditor:')
+    assert req["metadata"] == {"user_id": "en.wikipedia.org#1381634663"}
+    assert req["output_config"]["format"]["schema"]["properties"]["labels"]["items"]["enum"] == ["keep", "revert"]
+
+
 def test_task_identity_identical_across_issues_and_guidelines():
     other = {"number": 7, "title": "Crash on export", "body": "It crashes."}
     r1 = build_request("claude-sonnet-5-5", "godotengine/godot", LABELS, ISSUE, "")

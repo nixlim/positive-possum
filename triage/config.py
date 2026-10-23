@@ -21,12 +21,15 @@ def load_dotenv(path: Path = Path(".env")) -> None:
 
 @dataclass(frozen=True)
 class RepoConfig:
+    """A Mubit task source. kind "github": label issues of repo `full_name`;
+    kind "wiki": predict reverts on the MediaWiki host `full_name`."""
     key: str
     full_name: str
-    include_prefixes: tuple[str, ...]
-    include_exact: tuple[str, ...]
+    include_prefixes: tuple[str, ...] = ()
+    include_exact: tuple[str, ...] = ()
     exclude_exact: tuple[str, ...] = ()
     body_max_chars: int = 2500
+    kind: str = "github"
 
     def is_target(self, label: str) -> bool:
         if label in self.exclude_exact:
@@ -54,6 +57,7 @@ REPOS: dict[str, RepoConfig] = {
         exclude_exact=("team-infra",),
         body_max_chars=3000,
     ),
+    "enwiki": RepoConfig(key="enwiki", full_name="en.wikipedia.org", kind="wiki", body_max_chars=3000),
 }
 
 # Mubit is the only model egress (hackathon rule). Anthropic SDK base: Mubit adds /v1 itself.

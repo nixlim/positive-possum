@@ -1,0 +1,10 @@
+[
+ {
+  "name": "keep",
+  "description": "the edit stays; patrollers would not undo it"
+ },
+ {
+  "name": "revert",
+  "description": "patrollers would undo this edit"
+ }
+]
