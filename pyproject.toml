@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Issue tagging for OSS repos through Mubit, with an eval harness that detects when Mubit starts serving its adapter."
 requires-python = ">=3.11"
 dependencies = [
-    "openai>=1.70",
+    "anthropic>=2.2",  # output_config and stop_reason "refusal"; the version tested and locked
     "httpx>=0.27",
 ]
 

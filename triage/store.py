@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS calls (
   ts TEXT NOT NULL,
   run_id TEXT NOT NULL,
   kind TEXT NOT NULL,          -- eval | replay | correct
-  route TEXT NOT NULL,         -- mubit | direct
+  route TEXT NOT NULL,         -- always mubit: there is no other egress
   repo TEXT NOT NULL,
   issue INTEGER NOT NULL,
   model_asked TEXT,
@@ -79,13 +79,6 @@ class Store:
     def predictions(self, run_id: str) -> dict[int, list[str]]:
         rows = self.db.execute("SELECT issue, labels FROM calls WHERE run_id=? AND error IS NULL", (run_id,))
         return {issue: json.loads(labels) for issue, labels in rows}
-
-    def latest_run(self, repo: str, route: str, kind: str = "eval") -> str | None:
-        row = self.db.execute(
-            "SELECT run_id FROM runs WHERE repo=? AND route=? AND kind=? ORDER BY ts DESC LIMIT 1",
-            (repo, route, kind),
-        ).fetchone()
-        return row[0] if row else None
 
     def latest_prediction(self, repo: str, issue: int) -> list[str] | None:
         """Latest Mubit eval/replay answer: not a `correct` re-send (its guidelines held the answer)."""

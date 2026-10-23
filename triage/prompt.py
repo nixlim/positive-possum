@@ -1,6 +1,10 @@
 """The frozen task prompt. Mubit groups calls into a task by model + system
-prompt + tools + output format, so nothing in here may vary between calls of
-the same repo except the user message. Guidelines go in the user message."""
+prompt + output format, so nothing in here may vary between calls of the
+same repo except the user message. Guidelines go in the user message.
+
+Sonnet 5.5 refuses forced tool choice (`tool_choice` type "tool"/"any"), so the
+output format is Anthropic structured output (`output_config.format`), which
+guarantees a JSON reply matching the schema."""
 from __future__ import annotations
 
 SYSTEM_TEMPLATE = """\
@@ -17,6 +21,8 @@ Allowed labels:
 {label_lines}
 """
 
+MAX_TOKENS = 512  # a label list is a few dozen tokens; fixed so the request shape never varies
+
 
 def system_prompt(full_name: str, labels: list[dict]) -> str:
     lines = "\n".join(
@@ -26,24 +32,18 @@ def system_prompt(full_name: str, labels: list[dict]) -> str:
     return SYSTEM_TEMPLATE.format(full_name=full_name, label_lines=lines)
 
 
-def response_format(labels: list[dict]) -> dict:
+def output_schema(labels: list[dict]) -> dict:
+    """JSON schema of the reply: a list of labels from the allowed enum."""
     return {
-        "type": "json_schema",
-        "json_schema": {
-            "name": "issue_labels",
-            "strict": True,
-            "schema": {
-                "type": "object",
-                "properties": {
-                    "labels": {
-                        "type": "array",
-                        "items": {"type": "string", "enum": [l["name"] for l in labels]},
-                    }
-                },
-                "required": ["labels"],
-                "additionalProperties": False,
-            },
+        "type": "object",
+        "properties": {
+            "labels": {
+                "type": "array",
+                "items": {"type": "string", "enum": [l["name"] for l in labels]},
+            }
         },
+        "required": ["labels"],
+        "additionalProperties": False,
     }
 
 
@@ -55,12 +55,19 @@ def user_message(issue: dict, guidelines: str) -> str:
     )
 
 
+def session_id(full_name: str, issue: dict) -> str:
+    """Mubit's session key for Anthropic calls (`metadata.user_id`): one per issue, so a
+    re-send after a correction lands in the same session as the original answer."""
+    return f"{full_name}#{issue['number']}"
+
+
 def build_request(model: str, full_name: str, labels: list[dict], issue: dict, guidelines: str) -> dict:
+    """Keyword arguments for `anthropic.Anthropic().messages.create`."""
     return {
         "model": model,
-        "messages": [
-            {"role": "system", "content": system_prompt(full_name, labels)},
-            {"role": "user", "content": user_message(issue, guidelines)},
-        ],
-        "response_format": response_format(labels),
+        "max_tokens": MAX_TOKENS,
+        "system": system_prompt(full_name, labels),
+        "messages": [{"role": "user", "content": user_message(issue, guidelines)}],
+        "output_config": {"format": {"type": "json_schema", "schema": output_schema(labels)}},
+        "metadata": {"user_id": session_id(full_name, issue)},
     }

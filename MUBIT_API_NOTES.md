@@ -29,9 +29,33 @@ No CORS: call from a server, not a browser.
 - OpenAI: `GET /models`, `POST /chat/completions` (plain, streamed, `response_format`
   json_schema), `POST /responses` (with `metadata.session_id`), `POST /embeddings`.
 - Anthropic: `GET /v1/models`, `POST /v1/messages` (plain, streamed, forced tool use
-  with `tool_choice`), `POST /v1/messages/count_tokens`.
+  with `tool_choice`), `POST /v1/messages/count_tokens`. The model the forced tool
+  use was checked on was not recorded; claude-sonnet-5-5 is said to refuse it
+  (unchecked, item 2 below).
 - Gemini: `generateContent`, `streamGenerateContent?alt=sse`.
-- Python SDKs (openai, anthropic) work unchanged with the base URLs above. See `mubit_smoke.py`.
+- Python SDKs (openai, anthropic) work unchanged with the base URLs above.
+
+## Facts the triage request relies on (check: `uv run python mubit_smoke.py`)
+
+`mubit_smoke.py` sends the exact request `triage.prompt.build_request` builds,
+through `triage.llm.client()`, plus two probes, and prints status, Mubit error
+code and `x-middleware-request-id` for each. It uses its own repo name, so its
+calls form their own task and never count toward a real repo's task. Write the
+date and the request ids here after each check. Until then these are **unchecked**
+on the starter credit:
+
+1. `POST /v1/messages` with `output_config.format` (`json_schema`) and
+   `metadata.user_id` together, model claude-sonnet-5-5: accepted, reply is JSON
+   matching the schema. If refused, every triage call errors and every run scores n=0.
+2. claude-sonnet-5-5 refuses forced tool choice (`tool_choice` type `tool`/`any`).
+   This is why the request uses `output_config` instead of a forced tool.
+3. A second credential next to the Mubit key gets `401` with code
+   `extra_credential_refused` (the 401 is from the docs; the code string is what
+   `triage/llm.py` and the tests quote).
+4. Mubit counts `output_config.format` as the "output format" in its task identity
+   (the docs say "output format" without naming the Anthropic field). There is no
+   read API: confirm in the console's Tasks page that smoke calls with the same
+   schema land in one task.
 
 ## Starter-credit limits observed
 

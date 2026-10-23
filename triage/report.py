@@ -17,7 +17,7 @@ def render(store: Store, repo: str | None = None) -> str:
         f"{'agree%':>6} {'p50ms':>6} {'p90ms':>6}  served by",
     ]
     for r in runs:
-        agree = (r.get("agreement_vs_direct") or {}).get("exact")
+        agree = (r.get("agreement_vs_reference") or {}).get("exact")
         served = ", ".join(f"{m}×{c}" for m, c in (r.get("served") or {}).items())
         lines.append(
             f"{r['ts'][:19]:<20} {r['repo']:<8} {r['route']:<7} {r['n']:>3} {r['errors']:>3} {_pct(r['exact']):>6} "

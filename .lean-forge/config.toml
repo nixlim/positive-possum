@@ -16,12 +16,12 @@ paths = [".lean-forge/", ".claude/", ".codex/", ".github/", "AGENTS.md", "CLAUDE
 max_iterations = 8
 autofix = true
 focus = """
-- The system prompt, response_format and model for a repo are the Mubit task identity. They must be byte-identical across calls; anything that varies per call belongs in the user message (guidelines block). Flag any change to triage/prompt.py or to the request shape in triage/llm.py.
-- Only the Mubit key goes to api.mubit.ai and only the provider key goes to the provider. Never send both, never log a key.
+- The system prompt, output schema (output_config) and model for a repo are the Mubit task identity. They must be byte-identical across calls; anything that varies per call belongs in the user message (guidelines block). Flag any change to triage/prompt.py or to the request shape in triage/llm.py.
+- Mubit is the only egress (hackathon rule: every LLM call goes through Mubit). Flag any client that could reach a provider directly, any second credential on the request, and any key in a log.
 - Every model call must be logged to the store before scoring, including failures, with response headers, model_served and x-middleware-request-id. That log is the only evidence that Mubit switched the serving model.
 - Metrics must exclude errored calls rather than score them as wrong, and agreement must only compare issues present in both runs.
 - GitHub ingestion must drop pull requests, ignore bot actors in label events, keep the eval/train split deterministic, and never let ground-truth labels reach a prompt.
-- On the Mubit starter credit, chat completions refuse store, metadata and some options; do not add request options without checking MUBIT_API_NOTES.md.
+- On the Mubit starter credit some request options are refused; do not add request options without checking MUBIT_API_NOTES.md.
 """
 
 [approval]

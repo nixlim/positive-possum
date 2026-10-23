@@ -9,7 +9,7 @@ import time
 from . import guidelines as gl
 from .config import DATA_DIR, MODEL, REPOS, repo
 from .github import build_dataset, load_dataset
-from .llm import ROUTES, classify, client_for
+from .llm import classify, client
 from .report import render, render_families
 from .runner import run
 from .store import Store
@@ -25,7 +25,7 @@ def cmd_pull(a):
 
 
 def cmd_eval(a):
-    m = run(repo(a.repo), a.route, "eval", Store(), limit=a.limit, workers=a.workers, model=a.model)
+    m = run(repo(a.repo), "eval", Store(), limit=a.limit, workers=a.workers, model=a.model)
     print(json.dumps({k: v for k, v in m.items() if k != "by_family"}, indent=1))
 
 
@@ -34,7 +34,7 @@ def _pct(x: float | None) -> str:
 
 
 def cmd_replay(a):
-    m = run(repo(a.repo), "mubit", "replay", Store(), limit=a.limit, workers=a.workers, model=a.model)
+    m = run(repo(a.repo), "replay", Store(), limit=a.limit, workers=a.workers, model=a.model)
     print(f"replayed train issues through Mubit as {m['run_id']}: {m['n']} scored, {m['errors']} errors; "
           f"exact={_pct(m['exact'])} f1={_pct(m['f1'])} served={m['served']}")
 
@@ -54,7 +54,7 @@ def cmd_correct(a):
     line = gl.add_correction(cfg.key, issue, predicted, final)
     print("guideline added:", line)
     guide = gl.load(cfg.key, eval_issues={r["number"] for r in rows if r["split"] == "eval"})
-    res = classify(client_for("mubit"), "mubit", cfg.full_name, labels, issue, guide, model=a.model)
+    res = classify(client(), cfg.full_name, labels, issue, guide, model=a.model)
     store.log_call(f"correct-{cfg.key}-{a.issue}", "correct", cfg.key, a.issue, res, truth=final)
     print(f"re-sent through Mubit: pred={res.labels} served_by={res.model_served} req={res.request_id}")
 
@@ -78,13 +78,13 @@ def cmd_watch(a):
     while True:
         for key in repos:
             try:
-                m = run(repo(key), "mubit", "eval", Store(), workers=a.workers, model=a.model, verbose=False)
+                m = run(repo(key), "eval", Store(), workers=a.workers, model=a.model, verbose=False)
             except (Exception, SystemExit) as e:  # one bad round must not end the schedule
                 print(f"watch {key}: round failed: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
                 continue
-            agree = (m.get("agreement_vs_direct") or {}).get("exact")
+            agree = (m.get("agreement_vs_reference") or {}).get("exact")
             print(f"{m['run_id']}: n={m['n']} errors={m['errors']} exact={_pct(m['exact'])} f1={_pct(m['f1'])} "
-                  f"agree_vs_direct={_pct(agree)} p50={m['p50_ms']}ms served={m['served']}",
+                  f"agree_vs_ref={_pct(agree)} p50={m['p50_ms']}ms served={m['served']}",
                   flush=True)
         time.sleep(a.every)
 
@@ -98,12 +98,10 @@ def main(argv=None):
     s.add_argument("--n", type=int, default=300)
     s.set_defaults(fn=cmd_pull)
 
-    for name, fn, help_ in (("eval", cmd_eval, "score the eval split via a route"),
+    for name, fn, help_ in (("eval", cmd_eval, "score the eval split through Mubit"),
                             ("replay", cmd_replay, "send the train split through Mubit")):
         s = sub.add_parser(name, help=help_)
         s.add_argument("--repo", required=True, choices=REPOS)
-        if name == "eval":
-            s.add_argument("--route", default="mubit", choices=ROUTES)
         s.add_argument("--limit", type=int)
         s.add_argument("--workers", type=int, default=4)
         s.add_argument("--model", default=MODEL)

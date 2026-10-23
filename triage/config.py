@@ -56,10 +56,10 @@ REPOS: dict[str, RepoConfig] = {
     ),
 }
 
-MUBIT_BASE_URL = "https://api.mubit.ai/openai/v1"
-OPENAI_BASE_URL = "https://api.openai.com/v1"
+# Mubit is the only model egress (hackathon rule). Anthropic SDK base: Mubit adds /v1 itself.
+MUBIT_ANTHROPIC_BASE_URL = "https://api.mubit.ai/anthropic"
 load_dotenv()  # before reading TRIAGE_* below, so they can be set in .env
-MODEL = os.environ.get("TRIAGE_MODEL", "gpt-6-luna")
+MODEL = os.environ.get("TRIAGE_MODEL", "claude-sonnet-5-5")
 DATA_DIR = Path(os.environ.get("TRIAGE_DATA", "data"))
 MIN_AGE_DAYS = 7  # labels have usually settled by then
 

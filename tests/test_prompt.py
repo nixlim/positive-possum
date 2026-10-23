@@ -4,7 +4,7 @@ from pathlib import Path
 
 from triage.config import repo
 from triage.github import load_dataset
-from triage.prompt import build_request, response_format, system_prompt, user_message
+from triage.prompt import MAX_TOKENS, build_request, output_schema, system_prompt, user_message
 
 LABELS = [{"name": "bug", "description": "Something broken"}, {"name": "topic:gui", "description": ""}]
 ISSUE = {"number": 42, "title": "Button ignores clicks", "body": "Steps: click it."}
@@ -12,7 +12,7 @@ ISSUE = {"number": 42, "title": "Button ignores clicks", "body": "Steps: click i
 # Golden hashes of the frozen Mubit task identity. If one of these fails, the change forks
 # the Mubit task and resets its kept-example count: only update them on purpose.
 SYSTEM_SHA = "7347c30dea151681b6e57b96ebe3c839b8bb1b42594f901beba41e360abcf356"
-FORMAT_SHA = "57dd0be6b577f3e4fe06e97b42a4e53efefcf1432564bb158fe8e756d6a2b48f"
+SCHEMA_SHA = "b6bb88fd8f7f401a732c798f5808eddc07413d3e064d635cc7627449102f97ec"
 
 
 def _sha(s: str) -> str:
@@ -22,7 +22,7 @@ def _sha(s: str) -> str:
 def test_system_prompt_is_frozen_per_repo():
     a = system_prompt("godotengine/godot", LABELS)
     assert _sha(a) == SYSTEM_SHA
-    assert _sha(json.dumps(response_format(LABELS), sort_keys=True)) == FORMAT_SHA
+    assert _sha(json.dumps(output_schema(LABELS), sort_keys=True)) == SCHEMA_SHA
     assert "- bug: Something broken" in a
     assert "- topic:gui\n" in a
 
@@ -30,30 +30,34 @@ def test_system_prompt_is_frozen_per_repo():
 # The same, for the real Godot task built from the committed data/godot/labels.json. A re-pull
 # that changes a label name or description changes these and forks the task.
 GODOT_SYSTEM_SHA = "c093b18de88e855135f4aff023a1a89f30c611cc550e6658f17d3e028fd85ec7"
-GODOT_FORMAT_SHA = "64d6c8196cec1e1644887f4282c43d88256fcafa79b4b95beb90f1e2580b0fee"
+GODOT_SCHEMA_SHA = "657ee59cce1991b74cefebdf93bed18460ba550a9be0ba65b1aa566a7d7f4e33"
 
 
 def test_real_godot_task_identity_is_frozen():
     labels, _ = load_dataset(repo("godot"), Path(__file__).parent.parent / "data")
     assert _sha(system_prompt("godotengine/godot", labels)) == GODOT_SYSTEM_SHA
-    assert _sha(json.dumps(response_format(labels), sort_keys=True)) == GODOT_FORMAT_SHA
+    assert _sha(json.dumps(output_schema(labels), sort_keys=True)) == GODOT_SCHEMA_SHA
 
 
 def test_task_identity_identical_across_issues_and_guidelines():
     other = {"number": 7, "title": "Crash on export", "body": "It crashes."}
-    r1 = build_request("gpt-6-luna", "godotengine/godot", LABELS, ISSUE, "")
-    r2 = build_request("gpt-6-luna", "godotengine/godot", LABELS, other, "- add crash for export crashes")
-    assert r1["model"] == r2["model"]
-    assert r1["messages"][0] == r2["messages"][0]
-    assert json.dumps(r1["response_format"], sort_keys=True) == json.dumps(r2["response_format"], sort_keys=True)
-    assert set(r1) == set(r2) == {"model", "messages", "response_format"}
-    assert r1["messages"][1] != r2["messages"][1]
+    r1 = build_request("claude-sonnet-5-5", "godotengine/godot", LABELS, ISSUE, "")
+    r2 = build_request("claude-sonnet-5-5", "godotengine/godot", LABELS, other, "- add crash for export crashes")
+    for key in ("model", "max_tokens", "system", "output_config"):
+        assert r1[key] == r2[key], key
+    assert set(r1) == set(r2) == {"model", "max_tokens", "system", "messages", "output_config", "metadata"}
+    assert r1["max_tokens"] == MAX_TOKENS
+    assert r1["messages"] != r2["messages"]
+    # Session per issue, so a correction re-send joins the original answer's session.
+    assert r1["metadata"] == {"user_id": "godotengine/godot#42"}
+    assert r2["metadata"] == {"user_id": "godotengine/godot#7"}
 
 
 def test_guidelines_live_only_in_user_message():
-    req = build_request("gpt-6-luna", "godotengine/godot", LABELS, ISSUE, "- add topic:gui for button bugs")
-    system, user = req["messages"]
-    assert "topic:gui for button bugs" not in system["content"]
+    req = build_request("claude-sonnet-5-5", "godotengine/godot", LABELS, ISSUE, "- add topic:gui for button bugs")
+    assert "topic:gui for button bugs" not in req["system"]
+    (user,) = req["messages"]
+    assert user["role"] == "user"
     assert "topic:gui for button bugs" in user["content"]
     assert "Issue #42: Button ignores clicks" in user["content"]
 
@@ -62,7 +66,10 @@ def test_empty_guidelines_placeholder():
     assert "(none yet)" in user_message(ISSUE, "")
 
 
-def test_schema_enum_matches_labels():
-    rf = response_format(LABELS)
-    assert rf["json_schema"]["strict"] is True
-    assert rf["json_schema"]["schema"]["properties"]["labels"]["items"]["enum"] == ["bug", "topic:gui"]
+def test_output_schema_enum_matches_labels():
+    schema = output_schema(LABELS)
+    assert schema["properties"]["labels"]["items"]["enum"] == ["bug", "topic:gui"]
+    assert schema["additionalProperties"] is False
+    req = build_request("claude-sonnet-5-5", "godotengine/godot", LABELS, ISSUE, "")
+    assert req["output_config"] == {"format": {"type": "json_schema", "schema": schema}}
+    assert "tools" not in req and "tool_choice" not in req  # Sonnet 5.5 refuses forced tool choice

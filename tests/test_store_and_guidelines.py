@@ -3,8 +3,8 @@ from triage.llm import CallResult, parse_labels
 from triage.store import Store
 
 
-def _res(labels, served="gpt-6-luna", error=None):
-    return CallResult("mubit", labels, "gpt-6-luna", served, "mreq_x", 123, 10, 5, {"h": "v"}, {"ok": 1}, error)
+def _res(labels, served="claude-sonnet-5-5", error=None):
+    return CallResult(labels, "claude-sonnet-5-5", served, "mreq_x", 123, 10, 5, {"h": "v"}, {"ok": 1}, error)
 
 
 def test_store_roundtrip(tmp_path):
@@ -13,20 +13,16 @@ def test_store_roundtrip(tmp_path):
     s.log_call("run1", "eval", "godot", 2, _res([], error="boom"))
     s.log_call("run1", "eval", "godot", 3, _res(["crash"], served="adapter-v1"))
     assert s.predictions("run1") == {1: ["bug"], 3: ["crash"]}
-    assert s.served_models("run1") == {"gpt-6-luna": 2, "adapter-v1": 1}
+    assert s.served_models("run1") == {"claude-sonnet-5-5": 2, "adapter-v1": 1}
     s.log_run("run1", "eval", "mubit", "godot", 3, 1, {"exact": 0.5})
-    assert s.latest_run("godot", "mubit") == "run1"
-    assert s.latest_run("godot", "direct") is None
     assert s.runs("godot")[0]["exact"] == 0.5
     assert s.latest_prediction("godot", 3) == ["crash"]
 
 
-def test_latest_prediction_ignores_correct_resends_and_direct_calls(tmp_path):
+def test_latest_prediction_ignores_correct_resends(tmp_path):
     s = Store(tmp_path / "t.sqlite")
     s.log_call("rep", "replay", "godot", 7, _res(["bug"]))
     s.log_call("correct-godot-7", "correct", "godot", 7, _res(["crash"]))
-    direct = CallResult("direct", ["topic:gui"], "gpt-6-luna", "gpt-6-luna", None, 5, None, None)
-    s.log_call("dir", "eval", "godot", 7, direct)
     assert s.latest_prediction("godot", 7) == ["bug"]
 
 
