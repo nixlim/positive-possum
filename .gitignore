@@ -1,0 +1,13 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+data/calls.sqlite*
+data/raw/
+.devlog/
+.lean-forge/local.toml
+.worktrees/
+# claude-mem writes empty CLAUDE.md stubs into every directory
+*/**/CLAUDE.md
+*/CLAUDE.md

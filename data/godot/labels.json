@@ -1,0 +1,190 @@
+[
+ {
+  "name": "bug",
+  "description": ""
+ },
+ {
+  "name": "crash",
+  "description": ""
+ },
+ {
+  "name": "discussion",
+  "description": ""
+ },
+ {
+  "name": "documentation",
+  "description": ""
+ },
+ {
+  "name": "enhancement",
+  "description": ""
+ },
+ {
+  "name": "performance",
+  "description": ""
+ },
+ {
+  "name": "platform:android",
+  "description": ""
+ },
+ {
+  "name": "platform:ios",
+  "description": ""
+ },
+ {
+  "name": "platform:linuxbsd",
+  "description": ""
+ },
+ {
+  "name": "platform:macos",
+  "description": ""
+ },
+ {
+  "name": "platform:uwp",
+  "description": ""
+ },
+ {
+  "name": "platform:visionos",
+  "description": ""
+ },
+ {
+  "name": "platform:web",
+  "description": ""
+ },
+ {
+  "name": "platform:windows",
+  "description": ""
+ },
+ {
+  "name": "regression",
+  "description": ""
+ },
+ {
+  "name": "topic:2d",
+  "description": ""
+ },
+ {
+  "name": "topic:3d",
+  "description": ""
+ },
+ {
+  "name": "topic:animation",
+  "description": ""
+ },
+ {
+  "name": "topic:assetlib",
+  "description": ""
+ },
+ {
+  "name": "topic:audio",
+  "description": ""
+ },
+ {
+  "name": "topic:buildsystem",
+  "description": ""
+ },
+ {
+  "name": "topic:codestyle",
+  "description": ""
+ },
+ {
+  "name": "topic:core",
+  "description": ""
+ },
+ {
+  "name": "topic:dotnet",
+  "description": ""
+ },
+ {
+  "name": "topic:editor",
+  "description": ""
+ },
+ {
+  "name": "topic:export",
+  "description": ""
+ },
+ {
+  "name": "topic:gdextension",
+  "description": ""
+ },
+ {
+  "name": "topic:gdscript",
+  "description": ""
+ },
+ {
+  "name": "topic:gui",
+  "description": ""
+ },
+ {
+  "name": "topic:i18n",
+  "description": ""
+ },
+ {
+  "name": "topic:import",
+  "description": ""
+ },
+ {
+  "name": "topic:input",
+  "description": ""
+ },
+ {
+  "name": "topic:multiplayer",
+  "description": ""
+ },
+ {
+  "name": "topic:navigation",
+  "description": ""
+ },
+ {
+  "name": "topic:network",
+  "description": ""
+ },
+ {
+  "name": "topic:particles",
+  "description": ""
+ },
+ {
+  "name": "topic:physics",
+  "description": ""
+ },
+ {
+  "name": "topic:platforms",
+  "description": ""
+ },
+ {
+  "name": "topic:plugin",
+  "description": ""
+ },
+ {
+  "name": "topic:rendering",
+  "description": ""
+ },
+ {
+  "name": "topic:shaders",
+  "description": ""
+ },
+ {
+  "name": "topic:tests",
+  "description": ""
+ },
+ {
+  "name": "topic:thirdparty",
+  "description": ""
+ },
+ {
+  "name": "topic:vfx",
+  "description": ""
+ },
+ {
+  "name": "topic:visualscript",
+  "description": ""
+ },
+ {
+  "name": "topic:xr",
+  "description": ""
+ },
+ {
+  "name": "usability",
+  "description": ""
+ }
+]
