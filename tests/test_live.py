@@ -41,13 +41,23 @@ def test_wants_filters_bots_reverts_other_wikis_and_namespaces():
 
 def test_item_from_event_marks_ip_editors_and_builds_a_diff():
     item = live.item_from_event(EVENT, "a\nb", "a\nb\n==Honours==", 500)
-    assert item["number"] == 11 and item["anon"] is True
+    assert item["number"] == 11 and item["editor"] == "anonymous"
     assert item["body"].startswith(
         "Editor: anonymous (IP)\nEdit summary: /* Honours */\nSize change: +12 bytes"
     )
     assert "+==Honours==" in item["body"]
     assert item["url"].endswith("diff=11")
-    assert live.item_from_event(_ev(user="Alice"), "a", "b", 500)["anon"] is False
+    assert live.item_from_event(_ev(user="Alice"), "a", "b", 500)["editor"] == "registered"
+
+
+def test_temporary_account_events_are_marked_logged_out():
+    # The event stream carries no temp flag: the "~" name prefix, reserved for temporary
+    # accounts on Wikimedia wikis, is the only signal. Bug: these were shown as registered.
+    item = live.item_from_event(_ev(user="~2026-56676-01"), "a", "b", 500)
+    assert item["editor"] == "temporary"
+    assert item["body"].startswith("Editor: temporary account (logged out)\n")
+    card = card_from(item, _result(["keep"], {}, "claude-sonnet-5-5"), "claude-sonnet-5-5")
+    assert card["editor"] == "temporary"
 
 
 def test_is_provider_and_cost():

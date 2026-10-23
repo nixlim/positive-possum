@@ -84,8 +84,26 @@ def diff_text(old: str, new: str, max_chars: int) -> str:
     return text
 
 
+def editor_kind(rc: dict) -> str:
+    """Who made the edit: temporary, anonymous or registered. Logged-out editors now get
+    temporary accounts, which the API flags `temp` and gives a real userid, so a userid
+    alone does not mean registered. IP editors carry `anon` and userid 0."""
+    if rc.get("temp"):
+        return "temporary"
+    if rc.get("anon") or not rc.get("userid"):
+        return "anonymous"
+    return "registered"
+
+
+EDITOR_LABELS = {
+    "temporary": "temporary account (logged out)",
+    "anonymous": "anonymous (IP)",
+    "registered": "registered account",
+}
+
+
 def edit_body(rc: dict, old: str, new: str, max_chars: int) -> str:
-    editor = "anonymous (IP)" if rc.get("anon") or not rc.get("userid") else "registered account"
+    editor = EDITOR_LABELS[editor_kind(rc)]
     delta = rc.get("newlen", 0) - rc.get("oldlen", 0)
     return (
         f"Editor: {editor}\n"

@@ -40,7 +40,7 @@ def card_from(item: dict, res: CallResult, model: str) -> dict:
         "title": item["title"],
         "url": item["url"],
         "user": item["user"],
-        "anon": item["anon"],
+        "editor": item["editor"],
         "comment": item["comment"],
         "diff": diff,
         "verdict": res.labels[0] if res.labels else None,

@@ -132,6 +132,7 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const state = {cards: new Map(), selected: null, pinned: false, model: ""};
 const CONF = {low: 33, medium: 66, high: 100};
+const WHO = {temporary: "temporary account", anonymous: "anonymous IP", registered: "registered"};
 
 function chip(c) {
   if (c.error) return '<span class="chip err">error</span>';
@@ -163,7 +164,7 @@ function outcomeHtml(c) {
   return '<div class="wp' + (c.verdict === "keep" ? "" : " miss") + '">still standing on wikipedia' +(c.verdict === "keep" ? "" : " · our flag was a false alarm") + '</div>';
 }
 function cardHtml(c) {
-  const who = c.anon ? "anonymous IP" : "registered";
+  const who = WHO[c.editor];
   const served = c.served ? '<span class="tag ' + (c.owned ? "owned" : "frontier") + '">' + (c.owned ? "owned · " : "frontier · ") + esc(c.served) + '</span>' : "";
   const corr = c.correction ? '<div class="corr">' + (c.correction.source === "wikipedia" ? "wikipedia said " : "patroller said ") +esc(c.correction.verdict) + (c.correction.changed ? ' · guideline written · re-sent → ' + esc(c.correction.resent || "?") + (c.correction.resent === c.correction.verdict ? " ✓" : " ✗") : " · confirmed") + '</div>' : "";
   return '<div class="row"><a class="title" href="' + esc(c.url) + '" target="_blank" rel="noopener">' + esc(c.title) + '</a>' + chip(c) + served + '</div>'

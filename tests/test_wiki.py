@@ -52,6 +52,19 @@ def test_diff_and_body_truncate():
     assert "registered account" in edit_body(_rc(1), old, new, 100)
 
 
+def test_temporary_accounts_are_not_labelled_registered():
+    # enwiki now gives logged-out editors temporary accounts ("~2026-55627-38"). The API
+    # flags them temp=True and gives them a real userid, so a userid no longer means
+    # "registered". Bug: these edits were labelled "registered account".
+    temp = _rc(1, user="~2026-55627-38", userid=56302223, temp=True)
+    body = edit_body(temp, "a", "b", 100)
+    assert body.startswith("Editor: temporary account (logged out)\n")
+    assert "registered" not in body
+    assert edit_body(_rc(1, user="Alice"), "a", "b", 100).startswith("Editor: registered account\n")
+    ip = _rc(1, user="203.0.113.9", userid=0, anon=True)
+    assert edit_body(ip, "a", "b", 100).startswith("Editor: anonymous (IP)\n")
+
+
 def test_build_dataset_with_mocked_api(monkeypatch, tmp_path):
     cfg = REPOS["enwiki"]
     texts = {1: "a\nb", 2: "a\nVANDAL", 3: "a\nb", 4: "a\nb c"}

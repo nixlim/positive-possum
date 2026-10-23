@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 import httpx
 
 from .config import PRICE_USD_PER_MTOK, is_provider
-from .wiki import edit_body, fetch_contents
+from .wiki import edit_body, editor_kind, fetch_contents
 
 STREAM_URL = "https://stream.wikimedia.org/v2/stream/recentchange"
 # The feed carries every wiki's edits, many per second: a minute of silence is a stalled
@@ -45,7 +45,8 @@ def wants(event: dict, host: str) -> bool:
 
 
 def rc_from_event(event: dict) -> dict:
-    """The recentchanges-API shape that `wiki.edit_body` reads."""
+    """The recentchanges-API shape that `wiki.edit_body` reads. The stream has no temp
+    flag: the "~" name prefix, reserved for temporary accounts, is the only signal."""
     user = event.get("user") or ""
     anon = is_ip(user)
     ts = datetime.fromtimestamp(event["timestamp"], tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -58,6 +59,7 @@ def rc_from_event(event: dict) -> dict:
         "user": user,
         "userid": 0 if anon else 1,
         "anon": anon,
+        "temp": user.startswith("~"),
         "oldlen": (event.get("length") or {}).get("old", 0),
         "newlen": (event.get("length") or {}).get("new", 0),
     }
@@ -72,7 +74,7 @@ def item_from_event(event: dict, old: str, new: str, max_chars: int) -> dict:
         "body": edit_body(rc, old, new, max_chars),
         "url": f"{event['server_url']}/w/index.php?diff={rc['revid']}",
         "user": rc["user"],
-        "anon": rc["anon"],
+        "editor": editor_kind(rc),
         "comment": rc["comment"],
         "created_at": rc["timestamp"],
     }
