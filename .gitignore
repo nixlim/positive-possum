@@ -6,6 +6,7 @@ __pycache__/
 data/calls.sqlite*
 data/raw/
 data/corpus/
+data/pages/
 .devlog/
 .lean-forge/local.toml
 .worktrees/

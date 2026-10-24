@@ -99,6 +99,16 @@ Each entry is a change to a frozen system template or output schema in
 - On Anthropic, session = `metadata.user_id`.
 - Body limits on starter credit: 8 MiB, plain JSON, arrives within 60 s.
 
+## Observed on our runs (not in the docs, not re-checked)
+
+Seen in our own call log or the console; treat as observations until confirmed.
+
+- **2026-10-23**: the run stopped at Mubit's limit after ~2,150 calls, so the cap appears to
+  count calls (not tokens). The limit appeared to reset at 00:00 UTC.
+- **2026-10-23**: four replies with `max_tokens` 512 (`prompt.MAX_TOKENS`) on claude-sonnet-5-5
+  came back with no text, consistent with the model spending the budget before answering.
+  New request shapes use at least 1024.
+
 ## Headers
 
 - Every reply carries `x-middleware-request-id: mreq_...` (quote it for support).
