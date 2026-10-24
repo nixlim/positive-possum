@@ -79,6 +79,24 @@ def cmd_report(a):
         print(render_families(store, a.families))
 
 
+def cmd_provenance(a):
+    from . import provenance as pv
+
+    rep = pv.report(pv.read_calls(step=a.step), a.baseline, a.hours)
+    print(json.dumps(rep, indent=1) if a.json else pv.render(rep))
+
+
+def _provenance_parser(sub) -> None:
+    s = sub.add_parser(
+        "provenance", help="per step: did the served model, headers or reply shape change? (log only)"
+    )
+    s.add_argument("--step", help="one step (calls.repo), e.g. enwiki or edit-classify; default: all")
+    s.add_argument("--hours", type=float, default=24, help="recent window compared with the baseline")
+    s.add_argument("--baseline", type=int, default=200, help="first N answered calls of a step")
+    s.add_argument("--json", action="store_true")
+    s.set_defaults(fn=cmd_provenance)
+
+
 def cmd_corpus(a):
     from .corpus_build import Spec, build
 
@@ -166,6 +184,7 @@ def main(argv=None):
     s.add_argument("--repo", choices=REPOS)
     s.add_argument("--families", metavar="RUN_ID", help="also show per-label-family scores for a run")
     s.set_defaults(fn=cmd_report)
+    _provenance_parser(sub)
 
     s = sub.add_parser(
         "reconcile",
