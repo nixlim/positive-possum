@@ -142,8 +142,14 @@ uv run pytest -q                 # needs node on the PATH: the extension tests f
 - **Polite to Wikipedia.** Requests are paced, budgeted and cached, so a re-run sends nothing.
 - **Tests make no network calls.** Extension tests run the service worker and content scripts
   under node against stubbed Chrome and DOM APIs.
-- Changes are committed with `lean-forge commit` (gates plus an independent review) and landed
-  with `lean-forge land`.
+
+**Built with lean-forge.** EditWatch was developed with lean-forge, a Claude Code plugin that runs
+agent-written changes through a mechanical gate chain. `lean-forge commit` runs the four gates
+above, a secrets scan and an independent reviewer in a fresh context, with a capped fix loop, and
+commits exactly the tree that was reviewed. `lean-forge land` rebases onto `main` under a lock,
+re-runs the gates and fast-forward pushes. The gates, and the review focus (frozen prompts, Mubit
+as the only egress, every call logged), are in `.lean-forge/config.toml`. Nothing is committed or
+pushed by hand.
 
 | Where | What |
 | --- | --- |
