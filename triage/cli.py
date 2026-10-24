@@ -6,6 +6,7 @@ import argparse
 import json
 import sys
 import time
+from datetime import date
 
 from . import guidelines as gl
 from .config import DATA_DIR, MODEL, REPOS, repo
@@ -76,6 +77,13 @@ def cmd_report(a):
     if a.families:
         print()
         print(render_families(store, a.families))
+
+
+def cmd_corpus(a):
+    from .corpus_build import Spec, build
+
+    m = build(Spec(a.windows, a.diffs, a.budget, a.liftwing, a.seed, a.anchor))
+    print(json.dumps({k: m[k] for k in ("counts", "sampling", "requests_sent", "cache_hits")}, indent=1))
 
 
 def cmd_reconcile(a):
@@ -166,6 +174,17 @@ def main(argv=None):
     )
     s.add_argument("--repo", default="enwiki", choices=REPOS)
     s.set_defaults(fn=cmd_reconcile)
+    s = sub.add_parser(
+        "corpus",
+        help="build the local edit corpus (Wikipedia API only, no LLM) for notebooks/edit_intent.ipynb",
+    )
+    s.add_argument("--windows", type=int, default=24, help="one-hour windows over days 4-27 ago")
+    s.add_argument("--diffs", type=int, default=10_000, help="edits in the diff sample")
+    s.add_argument("--budget", type=int, default=15_000, help="maximum HTTP requests sent")
+    s.add_argument("--liftwing", type=int, default=400, help="test edits scored by Wikimedia's model")
+    s.add_argument("--seed", type=int, default=0)
+    s.add_argument("--anchor", type=date.fromisoformat, help="YYYY-MM-DD; default: kept from the first run")
+    s.set_defaults(fn=cmd_corpus)
     s = sub.add_parser("serve", help="live patrol desk: Wikimedia stream -> Mubit -> browser")
     s.add_argument("--repo", default="enwiki", choices=REPOS)
     s.add_argument("--host", default="127.0.0.1")

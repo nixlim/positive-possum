@@ -5,6 +5,7 @@ __pycache__/
 .pytest_cache/
 data/calls.sqlite*
 data/raw/
+data/corpus/
 .devlog/
 .lean-forge/local.toml
 .worktrees/

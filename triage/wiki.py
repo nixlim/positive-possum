@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import difflib
 import json
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -29,6 +30,10 @@ REVERTED_TAG = "mw-reverted"
 # game away ("Reverted edits by ..."). The task is about content edits.
 REVERTING_TAGS = {"mw-rollback", "mw-undo", "mw-manual-revert"}
 CONTENT_BATCH = 50  # revids per revisions query (API maximum for users)
+# Wikimedia etiquette: back off on 429/503 and on the API's `maxlag` error, honouring Retry-After.
+RETRY_STATUS = {429, 503}
+MAX_ATTEMPTS = 5
+MAX_RETRY_WAIT_S = 60.0
 
 LABELS = [
     {"name": "keep", "description": "the edit stays; patrollers would not undo it"},
@@ -40,8 +45,34 @@ def _client() -> httpx.Client:
     return httpx.Client(headers={"User-Agent": USER_AGENT}, timeout=60)
 
 
+def retry_wait(r: httpx.Response, attempt: int) -> float | None:
+    """Seconds to wait before re-sending, or None when the response is final. A lagged database
+    answers `maxlag` with HTTP 200 and the error code in the MediaWiki-API-Error header."""
+    if r.status_code not in RETRY_STATUS and r.headers.get("MediaWiki-API-Error") != "maxlag":
+        return None
+    try:
+        wait = float(r.headers.get("Retry-After", ""))
+    except ValueError:
+        wait = 2.0**attempt
+    return min(max(wait, 1.0), MAX_RETRY_WAIT_S)
+
+
+def _send(client: httpx.Client, method: str, url: str, **kw) -> httpx.Response:
+    """One request with Wikimedia etiquette: retried after Retry-After on 429, 503 and maxlag."""
+    attempt = 0
+    while True:
+        r = client.request(method, url, **kw)
+        wait = retry_wait(r, attempt)
+        if wait is None or attempt >= MAX_ATTEMPTS - 1:
+            return r
+        time.sleep(wait)
+        attempt += 1
+
+
 def _api(client: httpx.Client, host: str, params: dict) -> dict:
-    r = client.get(f"https://{host}/w/api.php", params={**params, "format": "json", "formatversion": 2})
+    r = _send(
+        client, "GET", f"https://{host}/w/api.php", params={**params, "format": "json", "formatversion": 2}
+    )
     r.raise_for_status()
     data = r.json()
     if "error" in data:

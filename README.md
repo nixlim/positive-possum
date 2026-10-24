@@ -123,6 +123,49 @@ kept-example count started again from zero. See "Deliberate task forks" in
 
 Every live and correction call is in `data/calls.sqlite` (kinds `live`, `correct`).
 
+## Local edit classifier (no LLM)
+
+A free, local classifier sits alongside the Mubit desk. It is backed by a corpus of real
+enwiki edits and asks whether edits can be classified by intention. Nothing in it calls
+Mubit, Anthropic or any other language model.
+
+```
+uv run triage corpus --windows 24 --diffs 10000     # about 15k Wikipedia API requests, cached
+uv run jupyter nbconvert --to notebook --execute --inplace notebooks/edit_intent.ipynb
+```
+
+`triage corpus` samples 24 one-hour windows over days 4 to 27 before today, rotating the hour
+of day. It lists every article edit in them, bots included. It links each `mw-reverted` edit to
+the edit that reverted it, using one listing per reverting tag, and records the revert summary,
+tool and delay. It fetches REST compare diffs for the reverted human content edits and for a
+uniform sample of kept ones, then the editors' edit counts. Finally it scores up to 400
+test-window edits with Wikimedia's keyless `revertrisk-language-agnostic` model on Lift Wing.
+
+The live desk's edits (from `data/calls.sqlite`) are listed and diffed too, so the local model
+can be set against the logged Sonnet verdicts. Every response is cached under `data/corpus/`
+(gitignored), so a re-run makes no requests. The anchor date and snapshot time are kept in
+`data/corpus/manifest.json`.
+
+The run follows Wikimedia's 2026 rate limits: at most 160 requests a minute across all hosts,
+3 at a time, with `maxlag=5`. It honours `Retry-After` on 429, 503 and maxlag, and stops at
+`--budget`.
+
+The modules split by concern:
+
+| Module | Job |
+| --- | --- |
+| `triage/corpus.py` | Pure sampling and linking helpers, plus the network session |
+| `triage/corpus_build.py` | Runs the build and loads the corpus |
+| `triage/intent.py` | Taxonomy regexes: the reviewer's stated reason and revert tool from the revert summary, and the editor's declared intent from their own summary, each mapped onto `WIKI_REASONS` |
+| `triage/features.py` | Diff parsing and save-time features, never anything known only after the save |
+| `triage/edit_model.py` | Gradient boosting and TF-IDF logistic models, plus weighted metrics |
+| `triage/edit_analysis.py` | The pandas tables |
+| `triage/edit_eval.py` | The experiments |
+| `triage/edit_plots.py` | The charts |
+
+`notebooks/edit_intent.ipynb` holds the analysis and the answer. Its cells only call those
+modules.
+
 ## Code quality gates
 
 `ruff check`, `ruff format --check`, `pylint` (module size, 400 lines max) and
