@@ -29,6 +29,7 @@ NOTICE = (
 )
 COST = "at most four Mubit calls per queued edit per click: extract, classify and one retry of each"
 FLAGGED = PAGE["analytics"]["flagged_30d"]
+STATUS = json.loads((ROOT / "extension" / "fixtures" / "status.json").read_text())
 # Script helpers: open the drawer on a tab, and read the drawer or banner text.
 HELPERS = (
     "const host = (id) => document.getElementById(id);"
@@ -301,6 +302,52 @@ def test_progress_rereads_every_ten_seconds_past_the_cache_and_stops_at_zero():
     assert "classifying: 1 edits left" in value["mid"]
     assert value["open"] is True
     assert "on" in value["tab"].split()
+
+
+def test_the_footer_says_who_answered_each_step():
+    status = {"data": STATUS, "offline": False, "status": 200}
+    out = content({"page": page(), "status": status}, "return drawerText();")
+    assert "extract: provider · classify: provider · brief: provider" in out["value"]
+    assert "[object" not in out["value"]
+
+
+def click_then_finish(status, read: str) -> dict:
+    # A click queues 5 edits; the next read still has them pending, the poll after finds them done.
+    counts = {"queued": 5, "already": 0, "errored": 0, "pending": 0, "skipped": 0, "remaining": 300}
+    replies = {
+        "page": [
+            page(risk_partial=True, classify_open=5),
+            page(risk_partial=True, classify_pending=5),
+            page(classify_pending=0),
+        ],
+        "status": status,
+        "classify": {"data": counts, "offline": False, "status": 202},
+    }
+    return content(
+        replies, CLICK_CLASSIFY + f"const during = bannerText(); await tick({TEN_SECONDS});" + read
+    )
+
+
+def test_the_click_counts_leave_the_banner_once_the_queue_is_done():
+    out = click_then_finish(UNREACHABLE, "return { during, after: bannerText() };")
+    assert "5 queued" in out["value"]["during"]
+    after = out["value"]["after"]
+    assert "queued" not in after
+    assert "Mubit calls left" not in after
+    assert f"{FLAGGED} flagged" in after
+
+
+def test_the_mubit_status_is_read_again_once_the_queue_is_done():
+    spent = {**STATUS, "edit-classify": {**STATUS["edit-classify"], "requests": 999, "answered": 997}}
+    status = [
+        {"data": STATUS, "offline": False, "status": 200},
+        {"data": spent, "offline": False, "status": 200},
+    ]
+    out = click_then_finish(
+        status,
+        "await click(find(host('edit-watch-drawer').shadow, 'button', 'Mubit')); return drawerText();",
+    )
+    assert "999 · 997" in out["value"]
 
 
 def test_progress_stops_after_thirty_minutes():

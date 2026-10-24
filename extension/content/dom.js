@@ -27,7 +27,8 @@ function h(tag, props, ...children) {
     else if (k === "onclick") node.addEventListener("click", v);
     else node.setAttribute(k, v);
   }
-  for (const c of children.flat()) if (c != null && c !== false) node.append(c);
+  // Nested arrays at any depth are flattened: DOM append() would turn an array into text.
+  for (const c of children.flat(Infinity)) if (c != null && c !== false) node.append(c);
   return node;
 }
 

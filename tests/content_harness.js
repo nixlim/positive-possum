@@ -39,13 +39,18 @@ class El {
   setAttribute(k, v) { this.attrs[k] = String(v); }
   set textContent(v) { this.children = [String(v)]; }
   get textContent() { return text(this); }
-  append(...nodes) { this.children.push(...nodes); }
-  replaceChildren(...nodes) { this.children = nodes; }
+  // As in the DOM, an argument that is not a node becomes text: an array reads "a,b".
+  append(...nodes) { this.children.push(...nodes.map(asChild)); }
+  replaceChildren(...nodes) { this.children = nodes.map(asChild); }
   addEventListener(type, fn) { if (type === "click") this.listeners.push(fn); }
   attachShadow() { this.shadow = new El("#shadow-root"); return this.shadow; }
   closest() { return null; }
   after(node) { mounted.push(node); }
   remove() { mounted.splice(mounted.indexOf(this), 1); }
+}
+
+function asChild(node) {
+  return node instanceof El ? node : String(node);
 }
 
 // Visible text: strings and elements, skipping <style>.

@@ -59,8 +59,10 @@ English Wikipedia article you are reading, from the local API (`uv run triage ap
   `PageAnalysis` (Pulse has "Refresh from Wikipedia"; Flags shows forced reviews and, only while
   `classify_open > 0`, "Classify recent edits" with its cost: at most four Mubit calls per queued
   edit per click, extract, classify and one retry of each. That button is the only sender of
-  `classify`; after a `202` the banner shows the reply's counts, and a `429` says the Mubit call
-  budget is spent);
+  `classify`; after a `202` the banner shows the reply's counts until the queue it started
+  finishes or stops, and a `429` says the Mubit call budget is spent). When a queue the page
+  view was following finishes or stops, it sends one `status` and the Mubit tab and footer use
+  that reply from then on;
   `mubit.js` renders Brief (cached, or "Request brief"; a safe markdown subset) and Mubit status
   (error groups, shift signals, repeat-run agreement), plus the per-step footer ("provider", or a
   highlighted "changed?" when a hard signal exists); `dom.js` builds every node with `createElement` and

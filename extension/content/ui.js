@@ -24,7 +24,8 @@ function riskChip(page) {
   return h("span", { class: "chip risk " + riskBand(page.risk_score), text });
 }
 
-// `classified` is the last classify reply's counts, kept across re-mounts while it polls.
+// `classified` is the last classify reply's counts, kept across re-mounts until the queue it
+// started finishes or stops.
 function bannerFacts(page, classified) {
   const a = page.analytics;
   const facts = [

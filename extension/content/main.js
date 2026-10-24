@@ -32,6 +32,8 @@ const POLL_LIMIT = (30 * 60 * 1000) / POLL_MS;
   if (pageRes && pageRes.error === "backend unreachable") mountNotice(heading, pageRes);
   let drawer = null;
   let classified = null;
+  let status = statusRes;
+  let following = false;
   let polls = 0;
   let timer = null;
   let unloaded = false;
@@ -45,26 +47,41 @@ const POLL_LIMIT = (30 * 60 * 1000) / POLL_MS;
     const wasOpen = drawer ? drawer.isOpen() : false;
     const tab = drawer ? drawer.tab() : undefined;
     for (const id of ["edit-watch-banner", "edit-watch-drawer"]) document.getElementById(id)?.remove();
-    const ctx = { title, send, status: statusRes, reload, onClassified };
+    const ctx = { title, send, status, reload, onClassified };
     drawer = mountDrawer(res, ctx, tab);
     mountBanner(heading, res, () => drawer.toggle(true), classified);
     drawer.toggle(wasOpen);
     clearTimeout(timer);
-    const page = res.data;
-    if (!unloaded && page.classify_pending > 0 && !page.classify_stopped && polls < POLL_LIMIT) {
+    if (!unloaded && queueRunning(res.data) && polls < POLL_LIMIT) {
+      following = true;
       timer = setTimeout(poll, POLL_MS);
     }
+  }
+  function queueRunning(page) {
+    return page.classify_pending > 0 && !page.classify_stopped;
+  }
+  // When a queue this page view followed finishes or stops: the click's counts are stale, and the
+  // Mubit status is read once more, since the queue spent Mubit calls.
+  async function settleQueue(page) {
+    if (!following || queueRunning(page)) return;
+    following = false;
+    classified = null;
+    status = await send({ type: "status" });
   }
   // Progress while the backend classifies: re-read past the worker's page cache. A failed read stops.
   async function poll() {
     polls += 1;
     const res = await send({ type: "page", title, fresh: true });
-    if (res && res.data && !unloaded) mount(res);
+    if (!(res && res.data) || unloaded) return;
+    await settleQueue(res.data);
+    if (!unloaded) mount(res);
   }
   async function reload() {
     polls = 0;
     const res = await send({ type: "page", title });
-    if (res && res.data) mount(res);
+    if (!(res && res.data)) return;
+    await settleQueue(res.data);
+    mount(res);
   }
   async function onClassified(text) {
     classified = text;
