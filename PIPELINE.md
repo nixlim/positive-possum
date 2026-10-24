@@ -150,8 +150,8 @@ Window 90 days; the badge and `*_30d` fields use the last 30.
 - `reverted_30d`, `reverted_90d`: edits carrying `mw-reverted`.
 - **Structure drift** between `sections_then` and `sections_now`: `controversy_rank_then/now`
   (index of the first section whose title matches
-  `/controvers|criticism|legal|allegation|scandal|investigation|convict|expenses|suspen|misconduct|lobbying/i`,
-  null if none), `controversy_words_then/now`, `words_then`, `words_now`.
+  `/controvers|criticism|\blegal (?:issues|proceedings|action|cases?)\b|allegation|scandal|investigation|convict|expenses|suspen|misconduct|lobbying/i`,
+  so a "Legal career" heading does not count; null if none), `controversy_words_then/now`, `words_then`, `words_now`.
 - **Bloat (page level, code)**: `bloat_index = (words_now − words_then − (controversy_words_now − controversy_words_then)) / words_then`,
   i.e. growth outside the controversy sections relative to the old article, reported next to
   `controversy_share_then/now` (controversy words / all words). Missing controversy words count
