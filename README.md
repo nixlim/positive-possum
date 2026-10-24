@@ -24,7 +24,8 @@ in this code base, and the Mubit key is the only credential the code ever sends.
 | [Watchlist pages](#watchlist-pages) | Snapshots of watched articles (UK MPs) and page-level signals: bursts, concentration, new accounts, reverts, structure drift, bloat, risk score | None |
 | [Seeing the switch](#seeing-the-switch) | Per-step provenance: did anything about who answers change? | None (reads the log) |
 | [Chrome extension](#chrome-extension) | A page's signals on the Wikipedia article itself: toolbar badge, banner and drawer | None (reads the local API) |
-| [Watchlist pipeline](#watchlist-pipeline) | Multi-step extract → classify → brief through Mubit, with the API and dashboard the extension reads | Mubit (being built) |
+| [Watchlist pipeline](#watchlist-pipeline) | Multi-step extract → classify → brief through Mubit | Mubit |
+| [Watchlist API and dashboard](#watchlist-api-and-dashboard) | The local API the extension reads, a watchlist dashboard and a live feed | Mubit, on a click and for the live feed |
 
 The design, the decisions taken on 24 Oct and the API contract of the watchlist work are in
 [`PIPELINE.md`](PIPELINE.md). Facts about the Mubit API checked by hand are in
@@ -215,28 +216,60 @@ has not yet routed any of them. The console's Requests page ("Served by") is the
 `extension/` directory. On an English Wikipedia article it shows:
 
 - a toolbar badge coloured by the page's risk score, with the number of flagged edits in the
-  last 30 days;
+  last 30 days (grey until those edits are classified);
 - a banner under the article title;
 - a drawer with the tabs Pulse (edits per day, bursts), Flags (classified edits, forced reviews),
   Editors, Structure (controversy section and bloat), Brief and Mubit (error groups, switch
   signals, repeat-run agreement), and a footer saying per step whether the provider answered.
 
-It reads the local API at `http://127.0.0.1:8322`. Until that API runs it shows a one-line notice
-under the title and no data. Only with demo mode on in the options page does it show the bundled
-fixtures about a synthetic article, marked "offline · fixture data". Only two
-actions spend anything: requesting a brief (Mubit calls) and refreshing a page from Wikipedia.
-Details are in [`extension/README.md`](extension/README.md).
+It reads the local API at `http://127.0.0.1:8322`, which must be started with the extension's ID
+([below](#watchlist-api-and-dashboard)). Until that API runs it shows a one-line notice under the
+title and no data. Only with demo mode on in the options page does it show the bundled fixtures
+about a synthetic article, marked "offline · fixture data". The first visit to an article reads
+its history from Wikipedia, with no model call; only **Classify recent edits** and **Request
+brief** spend Mubit calls. Details are in [`extension/README.md`](extension/README.md).
 
 ## Watchlist pipeline
 
-Being built in units (`PIPELINE.md` section 12):
+Three Mubit tasks, with frozen prompts in `triage/steps.py`: `edit-extract` (claims added and
+removed, negative information, tone), `edit-classify` (one label, severity, review flag) and
+`page-brief` (a short hedged brief). Everything measurable (words, citations, sections) is
+counted in code, and the quoted article text is fenced as data.
 
-- three Mubit tasks: `edit-extract` (claims added and removed, negative information, tone),
-  `edit-classify` (one label, severity, review flag) and `page-brief` (a short hedged brief), with
-  everything measurable (words, citations, sections) counted in code and the quoted article text
-  fenced as data;
-- `triage/api.py` on http://127.0.0.1:8322, which the extension reads, with a watchlist
-  dashboard.
+```
+uv run triage pipeline run --titles "Ed Davey" --max-calls 20    # a page's snapshot edits
+uv run triage pipeline brief --title "Ed Davey"
+```
+
+`pipeline run` resumes: an edit with a final answer is not sent again. `--max-calls` caps the
+Mubit calls, retries included.
+
+## Watchlist API and dashboard
+
+```
+unset ANTHROPIC_CUSTOM_HEADERS ANTHROPIC_BASE_URL
+set -a; . ./.env; set +a
+uv run triage api --extension-origin chrome-extension://<id>
+```
+
+- **The extension needs its own ID passed in.** Without it, Classify, Request brief and the
+  first-visit read all get `403`: the API accepts a `POST` only from an allowed `Origin`. Copy
+  the ID from `chrome://extensions` and pass it as above, after unsetting
+  `ANTHROPIC_CUSTOM_HEADERS` and `ANTHROPIC_BASE_URL` and loading `.env`.
+- **The dashboard starts empty.** It only lists watchlist pages that have already been read.
+  `uv run triage pages ingest --watchlist mps` fills it, at about 10–30 Wikipedia requests per
+  page and no Mubit calls. Its `--budget` (default 10,000 requests) may not cover all of the
+  roughly 650 MPs; raise it, or read a few with `--titles "A|B"`.
+
+The dashboard is at http://127.0.0.1:8322/: the read watchlist pages ranked by risk score, and
+the live feed. The live feed follows the Wikimedia stream and classifies new edits to watchlist
+pages as they arrive, at about two Mubit calls each; `--no-live` turns it off. `--watchlist mps`
+(the default) or `--titles "A|B"` sets the watchlist.
+
+Both budgets last for the life of the process. `--call-budget` (300 Mubit calls) keeps
+`--live-reserve` (60) for the live feed, and `--request-budget` (2,000 Wikipedia requests) keeps
+`--wiki-live-reserve` (300). A spent budget returns `429` with its reason, which the extension
+shows. The contract is `PIPELINE.md` section 9.
 
 ## Repository layout
 
@@ -250,6 +283,8 @@ triage/            the package (one concern per module, 400 lines at most)
   corpus*.py, intent.py, features.py, edit_*.py   the local edit classifier
   pages.py, page_analytics.py, candidates.py  watchlist pages
   provenance.py, agreement.py                 seeing the switch
+  steps.py, diffs.py, classification.py, pipeline.py, caller.py, edit_state.py   the pipeline
+  api.py, watch*.py, classify_queue.py, titles.py, static/watch.html   the API and dashboard
 extension/         the Chrome extension
 tests/             pytest, no network
 notebooks/         edit_intent.ipynb
