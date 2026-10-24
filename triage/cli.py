@@ -9,6 +9,7 @@ import time
 from datetime import date
 
 from . import guidelines as gl
+from . import pages as pg
 from .config import DATA_DIR, MODEL, REPOS, repo
 from .github import build_dataset, load_dataset
 from .llm import classify, client
@@ -135,6 +136,27 @@ def cmd_serve(a):
     serve(Patrol(cfg, model=a.model, min_interval_s=a.rate), a.host, a.port, a.allow_remote)
 
 
+def cmd_pages(a):
+    from . import candidates as cd
+    from .page_analytics import analyse
+
+    as_of = pg.parse_as_of(a.as_of) if a.as_of else pg.default_as_of()
+    s = pg.session(a.budget)
+    titles = a.titles.split("|") if a.titles else pg.watchlist(s, pg.WATCHLISTS[a.watchlist], as_of)
+    snaps = pg.ingest(s, titles, as_of, a.days)
+    n_revs = sum(len(x["revisions"]) for x in snaps)
+    print(
+        f"{len(snaps)}/{len(titles)} pages, {n_revs} human revisions in {a.days}d to {as_of.isoformat()}; "
+        f"requests sent {s.sent.total()}, cache hits {s.hits}"
+    )
+    if a.pages_cmd == "candidates":
+        rows = cd.rank([analyse(x) for x in snaps])
+        path = cd.write(rows, as_of.isoformat(), a.days)
+        for r in rows[: a.top]:
+            print(f"{r['rank']:>3}. {r['score']:5.1f}  {r['title']}: {r['reason']}")
+        print(f"wrote {path}")
+
+
 def repos_with_dataset() -> list[str]:
     return [k for k in REPOS if (DATA_DIR / k / "issues.jsonl").exists()]
 
@@ -157,6 +179,26 @@ def cmd_watch(a):
                 flush=True,
             )
         time.sleep(a.every)
+
+
+def add_pages_parser(sub):
+    s = sub.add_parser(
+        "pages", help="watchlist page snapshots and demo candidates (Wikipedia API only, no LLM)"
+    )
+    pages_sub = s.add_subparsers(dest="pages_cmd", required=True)
+    for name, help_ in (
+        ("ingest", "snapshot revisions, editors and sections of each page"),
+        ("candidates", "ingest, then rank pages by deterministic signals"),
+    ):
+        ps = pages_sub.add_parser(name, help=help_)
+        ps.add_argument("--titles", help="pipe-separated titles instead of the watchlist")
+        ps.add_argument("--watchlist", default="mps", choices=pg.WATCHLISTS)
+        ps.add_argument("--as-of", help="ISO time closing the window; default: now, rounded down to the hour")
+        ps.add_argument("--days", type=int, default=90)
+        ps.add_argument("--budget", type=int, default=10_000, help="maximum HTTP requests sent")
+        if name == "candidates":
+            ps.add_argument("--top", type=int, default=25)
+        ps.set_defaults(fn=cmd_pages)
 
 
 def main(argv=None):
@@ -222,6 +264,8 @@ def main(argv=None):
     s.add_argument("--rate", type=float, default=2.0, help="minimum seconds between Mubit calls")
     s.add_argument("--model", default=MODEL)
     s.set_defaults(fn=cmd_serve)
+
+    add_pages_parser(sub)
 
     s = sub.add_parser("watch", help="re-run the Mubit eval on a schedule")
     s.add_argument("--repos", nargs="+", choices=REPOS, help="default: every repo with a pulled dataset")

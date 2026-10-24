@@ -249,14 +249,18 @@ def list_reverters(s: Session, start: datetime, end: datetime) -> list[dict]:
     return list(seen.values())
 
 
-def fetch_users(s: Session, names: Iterable[str]) -> dict[str, dict]:
-    """Account edit count and registration per user name; IP editors have no account."""
+def fetch_users(s: Session, names: Iterable[str], groups: bool = False) -> dict[str, dict]:
+    """Account edit count and registration per user name (and groups, if asked: the only bot
+    signal); IP editors have no account. The default request is unchanged, so the corpus
+    cache stays valid."""
     todo = sorted({n for n in names if n and not is_ip(n)})
     batches = [todo[i : i + 50] for i in range(0, len(todo), 50)]
-    params = {"action": "query", "list": "users", "usprop": "editcount|registration"}
+    usprop = "editcount|registration|groups" if groups else "editcount|registration"
+    params = {"action": "query", "list": "users", "usprop": usprop}
     replies = parallel(lambda b: s.query({**params, "ususers": "|".join(b)}), batches)
     return {
         u["name"]: {"editcount": u.get("editcount"), "registration": u.get("registration")}
+        | ({"groups": u.get("groups", [])} if groups else {})
         for data in replies
         for u in data["query"]["users"]
         if "missing" not in u and "invalid" not in u
