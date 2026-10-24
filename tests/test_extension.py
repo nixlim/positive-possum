@@ -37,6 +37,10 @@ PAGE_KEYS = {
     "structure",
     "editors",
     "flags",
+    "classify_pending",
+    "classify_errored",
+    "classify_open",
+    "classify_stopped",
 }
 ANALYTICS_KEYS = {
     "edits_90d",
@@ -180,6 +184,15 @@ def test_page_fixture_is_synthetic_and_internally_consistent():
     page = _json("fixtures/page.json")
     a, st = page["analytics"], page["structure"]
     assert page["title"].endswith("(fixture)")
+    # Fully classified: nothing queued, errored, open or stopped, and the window is complete.
+    queue = (
+        page["classify_pending"],
+        page["classify_errored"],
+        page["classify_open"],
+        page["classify_stopped"],
+    )
+    assert queue == (0, 0, 0, None)
+    assert page["risk_partial"] is False
     assert all(e["name"].startswith("Fixture-") or e["kind"] != "registered" for e in page["editors"])
     days = a["edits_per_day"]
     assert len(days) == page["days"] == 90
@@ -252,13 +265,25 @@ def test_mubit_tab_renders_every_shift_signal_field():
     assert "Mubit call budget for this session is spent" in src
 
 
-def test_background_posts_only_for_brief_generation_and_refresh():
+def test_background_posts_only_for_brief_generation_refresh_and_classify():
+    # Section 9 adds POST /api/page/classify to the two earlier POSTs; nothing else may POST.
     src = (EXT / "background.js").read_text()
     routes = re.findall(r'^\s*"?([\w-]+)"?: \{ method: "(GET|POST)", path: "([^"]+)"', src, re.M)
-    assert {name for name, _, _ in routes} == {"page", "brief", "status", "brief-generate", "refresh"}
+    assert {name for name, _, _ in routes} == {
+        "page",
+        "brief",
+        "status",
+        "brief-generate",
+        "refresh",
+        "classify",
+    }
     posts = {name: path for name, method, path in routes if method == "POST"}
-    assert posts == {"brief-generate": "/api/page/brief", "refresh": "/api/page/refresh"}
-    assert src.count('"POST"') == 2
+    assert posts == {
+        "brief-generate": "/api/page/brief",
+        "refresh": "/api/page/refresh",
+        "classify": "/api/page/classify",
+    }
+    assert src.count('"POST"') == 3
     assert src.count("fetch(") == 2  # one for bundled fixtures, one for the backend
     assert "method: route.method" in src
 
@@ -302,8 +327,9 @@ def test_js_never_parses_html_or_evaluates_strings():
         assert not hits, (path.name, hits)
 
 
-@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
 @pytest.mark.parametrize("path", JS_FILES, ids=lambda p: str(p.relative_to(EXT)))
 def test_js_parses_with_node(path):
+    # Node is a gate requirement: this fails, never skips, without it.
+    assert shutil.which("node"), "node is required to run the extension tests"
     r = subprocess.run(["node", "--check", str(path)], capture_output=True, text=True, check=False)
     assert r.returncode == 0, r.stderr

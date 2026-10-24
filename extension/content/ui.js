@@ -24,16 +24,21 @@ function riskChip(page) {
   return h("span", { class: "chip risk " + riskBand(page.risk_score), text });
 }
 
-function bannerFacts(page) {
+// `classified` is the last classify reply's counts, kept across re-mounts while it polls.
+function bannerFacts(page, classified) {
   const a = page.analytics;
   const facts = [
     a.edits_30d + " edits / 30d",
-    page.risk_partial ? "flags pending" : a.flagged_30d + " flagged",
+    a.flagged_30d + (page.risk_partial ? " flagged so far (partial)" : " flagged"),
+    page.classify_errored > 0 ? page.classify_errored + " could not be classified" : null,
+    page.classify_pending > 0 ? classifyingText(page) : null,
+    STOPPED[page.classify_stopped],
+    classified,
     a.reverted_30d + " reverted",
     Math.min(3, a.editors_90d) + " editors made " + pct(a.top3_share),
   ];
   const move = controversyMove(page.structure);
-  return move ? facts.concat(move) : facts;
+  return facts.concat(move).filter(Boolean);
 }
 
 // Vector 2022 puts the heading in a flex title bar; go below the bar, not beside the heading.
@@ -56,7 +61,23 @@ function mountNotice(heading, res) {
   placeUnder(heading, host);
 }
 
-function mountBanner(heading, res, onOpen) {
+// One line on the first visit (reading, or why the article could not be read): no score, no
+// colour, and "Try again" when `onRetry` is given.
+function mountLine(heading, text, onRetry) {
+  document.getElementById("edit-watch-line")?.remove();
+  const { host, root } = shadowHost("edit-watch-line");
+  root.append(
+    h(
+      "div",
+      { class: "banner notice" },
+      h("span", { class: "facts", text: "Edit watch: " + text }),
+      onRetry ? h("button", { text: "Try again", onclick: onRetry }) : null,
+    ),
+  );
+  placeUnder(heading, host);
+}
+
+function mountBanner(heading, res, onOpen, classified) {
   const page = res.data;
   const { host, root } = shadowHost("edit-watch-banner");
   root.append(
@@ -64,7 +85,7 @@ function mountBanner(heading, res, onOpen) {
       "div",
       { class: "banner " + riskBand(page.risk_score), title: "Signals for human review, not findings." },
       riskChip(page),
-      h("span", { class: "facts", text: bannerFacts(page).join(" · ") }),
+      h("span", { class: "facts", text: bannerFacts(page, classified).join(" · ") }),
       offlineMark(res),
       h("button", { text: "Open", onclick: onOpen }),
     ),
@@ -72,19 +93,21 @@ function mountBanner(heading, res, onOpen) {
   placeUnder(heading, host);
 }
 
-function mountDrawer(res, ctx) {
+function mountDrawer(res, ctx, tab = "Pulse") {
   const page = res.data;
   const { host, root } = shadowHost("edit-watch-drawer");
   const body = h("div", { class: "body" });
   const nav = h("nav");
   const views = new Map();
   const panel = h("aside", { class: "drawer", hidden: "" });
+  let current = tab;
 
   function toggle(open = panel.hidden) {
     panel.hidden = !open;
   }
 
   function show(name) {
+    current = name;
     for (const b of nav.children) b.classList.toggle("on", b.dataset.tab === name);
     if (!views.has(name)) views.set(name, TABS.find(([t]) => t === name)[1](page, ctx));
     body.replaceChildren(views.get(name));
@@ -112,9 +135,9 @@ function mountDrawer(res, ctx) {
   );
   root.append(panel);
   document.body.append(host);
-  show("Pulse");
+  show(tab);
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") toggle(false);
   });
-  return { toggle, isOpen: () => !panel.hidden };
+  return { toggle, isOpen: () => !panel.hidden, tab: () => current };
 }

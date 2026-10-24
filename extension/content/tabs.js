@@ -4,6 +4,21 @@ const FORCED = {
   net_words_removed: "at least 50 more words removed than added",
   controversy_words_removed: "words removed from a controversy section",
 };
+const PARTIAL = "recent edits not yet classified";
+const CLASSIFY_COST = "at most four Mubit calls per queued edit per click: extract, classify and one retry of each";
+const STOPPED = {
+  budget: "classification stopped: Mubit call budget spent",
+  wikipedia: "classification stopped: Wikipedia request budget spent",
+};
+const classifyingText = (page) => "classifying: " + page.classify_pending + " edits left";
+
+// Why a refresh (or first-visit ingest) gave no PageAnalysis, from its status and `reason`.
+function refreshFailure(res) {
+  if (res && res.status === 404) return "Not covered: not an article Wikipedia knows";
+  if (res && res.status === 429 && res.reason === "recent") return "Refreshed in the last 10 minutes; try again later";
+  if (res && res.status === 429 && res.reason === "wikipedia") return "Not read: Wikipedia request budget spent";
+  return "Could not reach the triage backend";
+}
 
 function pulseChart(days, bursts, flags) {
   const W = 400;
@@ -51,10 +66,7 @@ function refreshControl(page, ctx) {
         await ctx.reload();
         return;
       }
-      status.textContent = res && res.offline
-        ? "refresh needs the backend (offline)"
-        : "refresh failed: " + ((res && res.error) || "no data") +
-          (res && res.status ? " (at most once per 10 minutes)" : "");
+      status.textContent = res && res.offline ? "refresh needs the backend (offline)" : refreshFailure(res);
       button.disabled = false;
     },
   });
@@ -143,23 +155,57 @@ function flagCard(e) {
   );
 }
 
-function renderFlags(page) {
-  if (!page.flags.length) {
-    return empty(
-      page.risk_partial
-        ? "No classified edits yet: the pipeline has not run on this page."
-        : "No edits flagged for review in this window.",
-    );
-  }
-  return h(
-    "div",
-    null,
-    note(
-      "Edits flagged for human review. A label describes the edit, not the person who made it. " +
-        "Click an edit to open its diff on Wikipedia.",
-    ),
-    page.flags.map(flagCard),
-  );
+// The 202 reply's counts, each 30-day edit in exactly one of them.
+function classifyCounts(d) {
+  return [
+    num(d.queued) + " queued",
+    num(d.already) + " already classified",
+    num(d.errored) + " errors",
+    num(d.pending) + " already queued",
+    num(d.skipped) + " not classified: Mubit budget",
+    num(d.remaining) + " Mubit calls left",
+  ].join(", ");
+}
+
+function classifyFailure(res) {
+  if (res && res.offline) return "classifying needs the backend (offline)";
+  if (res && res.status === 429 && res.reason === "wikipedia") return "classify failed: Wikipedia request budget spent";
+  return "classify failed: " + errorText(res);
+}
+
+// Shown only while some edit can be queued (errored edits never are). The click is the only
+// `classify` sender; the counts and progress go to the banner.
+function classifyControl(page, ctx) {
+  if (!(page.classify_open > 0)) return null;
+  const status = h("span", { class: "sub", text: num(page.classify_open) + " edits to classify" });
+  const button = h("button", {
+    text: "Classify recent edits",
+    onclick: async () => {
+      button.disabled = true;
+      status.textContent = "queueing…";
+      const res = await ctx.send({ type: "classify", title: ctx.title });
+      if (res && res.data && !res.offline) {
+        await ctx.onClassified(classifyCounts(res.data));
+        return;
+      }
+      status.textContent = classifyFailure(res);
+      button.disabled = false;
+    },
+  });
+  return h("div", { class: "refresh" }, note(CLASSIFY_COST), h("div", { class: "row" }, button, status));
+}
+
+function renderFlags(page, ctx) {
+  const list = page.flags.length
+    ? [
+        note(
+          "Edits flagged for human review. A label describes the edit, not the person who made it. " +
+            "Click an edit to open its diff on Wikipedia.",
+        ),
+        ...page.flags.map(flagCard),
+      ]
+    : empty(page.risk_partial ? "No edits flagged so far." : "No edits flagged for review in this window.");
+  return h("div", null, page.risk_partial ? note(PARTIAL) : null, classifyControl(page, ctx), list);
 }
 
 function renderEditors(page) {

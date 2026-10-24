@@ -6,6 +6,10 @@
   "computed_at": "2026-10-24T14:02:11+00:00",
   "risk_score": 77.5,
   "risk_partial": false,
+  "classify_pending": 0,
+  "classify_errored": 0,
+  "classify_open": 0,
+  "classify_stopped": null,
   "risk_parts": {
     "flagged": 24.0,
     "concentration": 15.0,
