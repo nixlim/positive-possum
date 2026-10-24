@@ -181,7 +181,45 @@ def cmd_watch(a):
         time.sleep(a.every)
 
 
-def add_pages_parser(sub):
+def _corpus_parser(sub) -> None:
+    s = sub.add_parser(
+        "corpus",
+        help="build the local edit corpus (Wikipedia API only, no LLM) for notebooks/edit_intent.ipynb",
+    )
+    s.add_argument("--windows", type=int, default=24, help="one-hour windows over days 4-27 ago")
+    s.add_argument("--diffs", type=int, default=10_000, help="edits in the diff sample")
+    s.add_argument("--budget", type=int, default=15_000, help="maximum HTTP requests sent")
+    s.add_argument("--liftwing", type=int, default=400, help="test edits scored by Wikimedia's model")
+    s.add_argument("--seed", type=int, default=0)
+    s.add_argument("--anchor", type=date.fromisoformat, help="YYYY-MM-DD; default: kept from the first run")
+    s.set_defaults(fn=cmd_corpus)
+
+
+def _serve_parser(sub) -> None:
+    s = sub.add_parser("serve", help="live patrol desk: Wikimedia stream -> Mubit -> browser")
+    s.add_argument("--repo", default="enwiki", choices=REPOS)
+    s.add_argument("--host", default="127.0.0.1")
+    s.add_argument(
+        "--allow-remote",
+        action="store_true",
+        help="serve on a non-loopback host; the desk has no authentication",
+    )
+    s.add_argument("--port", type=int, default=8321)
+    s.add_argument("--rate", type=float, default=2.0, help="minimum seconds between Mubit calls")
+    s.add_argument("--model", default=MODEL)
+    s.set_defaults(fn=cmd_serve)
+
+
+def _watch_parser(sub) -> None:
+    s = sub.add_parser("watch", help="re-run the Mubit eval on a schedule")
+    s.add_argument("--repos", nargs="+", choices=REPOS, help="default: every repo with a pulled dataset")
+    s.add_argument("--every", type=int, default=3600, help="seconds between rounds")
+    s.add_argument("--workers", type=int, default=4)
+    s.add_argument("--model", default=MODEL)
+    s.set_defaults(fn=cmd_watch)
+
+
+def _pages_parser(sub) -> None:
     s = sub.add_parser(
         "pages", help="watchlist page snapshots and demo candidates (Wikipedia API only, no LLM)"
     )
@@ -241,38 +279,10 @@ def main(argv=None):
     )
     s.add_argument("--repo", default="enwiki", choices=REPOS)
     s.set_defaults(fn=cmd_reconcile)
-    s = sub.add_parser(
-        "corpus",
-        help="build the local edit corpus (Wikipedia API only, no LLM) for notebooks/edit_intent.ipynb",
-    )
-    s.add_argument("--windows", type=int, default=24, help="one-hour windows over days 4-27 ago")
-    s.add_argument("--diffs", type=int, default=10_000, help="edits in the diff sample")
-    s.add_argument("--budget", type=int, default=15_000, help="maximum HTTP requests sent")
-    s.add_argument("--liftwing", type=int, default=400, help="test edits scored by Wikimedia's model")
-    s.add_argument("--seed", type=int, default=0)
-    s.add_argument("--anchor", type=date.fromisoformat, help="YYYY-MM-DD; default: kept from the first run")
-    s.set_defaults(fn=cmd_corpus)
-    s = sub.add_parser("serve", help="live patrol desk: Wikimedia stream -> Mubit -> browser")
-    s.add_argument("--repo", default="enwiki", choices=REPOS)
-    s.add_argument("--host", default="127.0.0.1")
-    s.add_argument(
-        "--allow-remote",
-        action="store_true",
-        help="serve on a non-loopback host; the desk has no authentication",
-    )
-    s.add_argument("--port", type=int, default=8321)
-    s.add_argument("--rate", type=float, default=2.0, help="minimum seconds between Mubit calls")
-    s.add_argument("--model", default=MODEL)
-    s.set_defaults(fn=cmd_serve)
-
-    add_pages_parser(sub)
-
-    s = sub.add_parser("watch", help="re-run the Mubit eval on a schedule")
-    s.add_argument("--repos", nargs="+", choices=REPOS, help="default: every repo with a pulled dataset")
-    s.add_argument("--every", type=int, default=3600, help="seconds between rounds")
-    s.add_argument("--workers", type=int, default=4)
-    s.add_argument("--model", default=MODEL)
-    s.set_defaults(fn=cmd_watch)
+    _corpus_parser(sub)
+    _serve_parser(sub)
+    _pages_parser(sub)
+    _watch_parser(sub)
 
     a = p.parse_args(argv)
     a.fn(a)
