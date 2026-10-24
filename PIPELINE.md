@@ -342,7 +342,9 @@ Code appends the closing line if the reply lacks it. Generated on demand and cac
   decide finality; probe rows (section 8) never change an edit's state. An edit's extract step,
   and separately its classify step, is final when it has an answered row (for classify, also a
   rule label, below) or a **final error**: an unparseable reply whose one retry was also
-  unparseable. An answered row takes precedence over any error row of the same step, so a step
+  unparseable. The retry row names the row it retries (`retry_of` in its extra); rows logged
+  before that field existed are read as a first attempt and its retry when two unparseable rows
+  of the same step and revid follow each other in one run with neither naming `retry_of`. An answered row takes precedence over any error row of the same step, so a step
   with both counts as answered. A gateway error (an HTTP error such as
   the call-cap `429`, a connection error or a timeout; section 8) is never final, on the first
   call or on the retry: the row is logged, nothing more is sent for that edit in that run, and
@@ -354,10 +356,12 @@ Code appends the closing line if the reply lacks it. Generated on demand and cac
   all use these definitions.
 - **Unavailable diff.** Before extract, the wikitext of the revision and of its parent (none for
   a page creation, `parentid` 0, which diffs against empty text) is read with
-  `pages.fetch_wikitext`. A revid absent from a successful reply (the revision is
-  revision-deleted or suppressed, which `fetch_wikitext` leaves out) can never be diffed, so this
-  is final: no Mubit call is made, and the store's `unavailable_diffs` table records (revid,
-  missing `revision`|`parent`, ts), read by resume and section 9 like a final error. A fetch that
+  `pages.fetch_wikitext`, which follows `continue` (a reply over MediaWiki's result-size limit
+  leaves revisions out until the continuation is fetched). A revid absent once every continuation
+  has been read (the revision is revision-deleted or suppressed, which `fetch_wikitext` leaves
+  out) can never be diffed, so this is final: no Mubit call is made, and the store's
+  `unavailable_diffs` table records (revid, missing `revision`|`parent`, ts), read by resume and
+  section 9 like a final error. A probe run makes no call for such an edit but records nothing. A fetch that
   fails (a connection error, timeout or HTTP error after `wiki`'s retries, a MediaWiki API error
   payload, for which `wiki._api` raises a plain `SystemExit` (a `maxlag` error still returned
   after `wiki`'s retries included), or a request the Wikipedia budget refuses) is transient:

@@ -57,6 +57,18 @@ CREATE TABLE IF NOT EXISTS outcomes (     -- what Wikipedia did after a live ver
   checked_at TEXT NOT NULL,
   PRIMARY KEY (repo, issue)
 );
+CREATE TABLE IF NOT EXISTS rule_labels (  -- edits the skip rule labelled; no call was made
+  revid INTEGER PRIMARY KEY,
+  label TEXT NOT NULL,
+  measured TEXT NOT NULL,      -- JSON: the measured facts the rule read
+  extract_call_id INTEGER,
+  ts TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS unavailable_diffs (  -- revids a successful wikitext reply left out
+  revid INTEGER PRIMARY KEY,
+  missing TEXT NOT NULL,       -- revision | parent
+  ts TEXT NOT NULL
+);
 """
 
 
@@ -242,3 +254,40 @@ class Store:
             f"SELECT {cols}, checked_at FROM outcomes WHERE repo=? ORDER BY verdict_ts", (repo,)
         )
         return [dict(zip((*self.OUTCOME_COLS, "checked_at"), r, strict=True)) for r in rows]
+
+    # ---- edit state besides the calls (PIPELINE.md section 7.4) ---------------
+
+    def errors(self, repos: tuple[str, ...], skip_kinds: tuple[str, ...] = ()) -> list[dict]:
+        """Errored calls of the repos, calls of `skip_kinds` left out, oldest first:
+        [{id, run_id, repo, issue, error, extra}]."""
+        rmarks, kmarks = ",".join("?" * len(repos)), ",".join("?" * len(skip_kinds))
+        rows = self.db.execute(
+            f"SELECT id, run_id, repo, issue, error, extra FROM calls WHERE repo IN ({rmarks})"
+            f" AND error IS NOT NULL AND kind NOT IN ({kmarks}) ORDER BY id",
+            (*repos, *skip_kinds),
+        )
+        keys = ("id", "run_id", "repo", "issue", "error")
+        return [
+            dict(zip(keys, r[:5], strict=True)) | {"extra": json.loads(r[5]) if r[5] else {}} for r in rows
+        ]
+
+    def log_rule_label(self, revid: int, label: str, measured: dict, extract_call_id: int) -> None:
+        self.db.execute(
+            "INSERT OR REPLACE INTO rule_labels VALUES (?,?,?,?,?)",
+            (revid, label, json.dumps(measured), extract_call_id, now()),
+        )
+        self.db.commit()
+
+    def rule_labels(self) -> dict[int, dict]:
+        rows = self.db.execute("SELECT revid, label, measured, extract_call_id, ts FROM rule_labels")
+        return {
+            r[0]: {"label": r[1], "measured": json.loads(r[2]), "extract_call_id": r[3], "ts": r[4]}
+            for r in rows
+        }
+
+    def log_unavailable(self, revid: int, missing: str) -> None:
+        self.db.execute("INSERT OR REPLACE INTO unavailable_diffs VALUES (?,?,?)", (revid, missing, now()))
+        self.db.commit()
+
+    def unavailable_diffs(self) -> dict[int, str]:
+        return dict(self.db.execute("SELECT revid, missing FROM unavailable_diffs"))

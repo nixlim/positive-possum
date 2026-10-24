@@ -124,6 +124,18 @@ def test_fetch_wikitext_batches_and_skips_hidden_revisions():
     assert got[2] == "text 2"
 
 
+def test_fetch_wikitext_follows_continuation_past_the_result_size_limit():
+    def route(p):  # the first reply was cut at the size limit after revision 1
+        rev = 2 if "rvcontinue" in p else 1
+        cont = {} if "rvcontinue" in p else {"continue": {"rvcontinue": "2", "continue": "||"}}
+        revs = [{"revid": rev, "slots": {"main": {"content": f"t{rev}"}}}]
+        return {**cont, "query": {"pages": [{"pageid": 5, "revisions": revs}]}}
+
+    s = FakeSession(route)
+    assert pg.fetch_wikitext(s, [1, 2]) == {1: "t1", 2: "t2"}
+    assert s.calls[1]["rvcontinue"] == "2" and s.calls[1]["revids"] == "1|2"
+
+
 def test_drop_bots_removes_bot_accounts_and_their_edits():
     revs = pg.build_revisions(
         [_rev(1, "2026-10-01T00:00:00Z", user="FixBot"), _rev(2, "2026-10-02T00:00:00Z")], None

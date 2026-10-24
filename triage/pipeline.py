@@ -2,64 +2,41 @@
 
 Every call, failures and retries included, is logged before anything reads it, and each classify
 row names the extract row (and who served it) that fed it. Normal runs resume from non-probe rows
-only. A probe run (PIPELINE.md section 8) re-sends every revision: extract with the same message,
-classify fed the revision's baseline extract (its first answered non-probe extract row), and, if
-chained, one more classify fed the fresh probe extract. Every call is training data and counts
-toward Mubit's cap: one retry on an unparseable reply, a call budget, a pace."""
+only, and send only the steps that are not final (edit_state, PIPELINE.md section 7.4). A probe
+run (section 8) re-sends every revision: extract with the same message, classify fed the
+revision's baseline extract (its first answered non-probe extract row), and, if chained, one more
+classify fed the fresh probe extract. Every call is training data and counts toward Mubit's cap:
+one retry on an unparseable reply, a call budget, a pace (caller.py)."""
 
 from __future__ import annotations
 
-import time
 from collections.abc import Callable, Iterator
-from datetime import UTC, datetime
 from pathlib import Path
 
 from anthropic import Anthropic
 
+from . import edit_state as es
 from . import pages, steps
-from .classification import classification, extract_of, parse_brief, parse_classify, parse_extract, skipped
+from .caller import Caller
+from .classification import (
+    RULE_LABEL,
+    classification,
+    extract_of,
+    parse_brief,
+    parse_classify,
+    parse_extract,
+    skipped,
+)
 from .config import MODEL
 from .corpus import Session, fetch_users, ts
 from .diffs import edit_diff
-from .llm import CallResult, send
+from .edit_state import NOT_PROBE, PROBE
+from .llm import CallResult
 from .store import Store
 from .wiki import CONTENT_BATCH, editor_kind
 
-PROBE = "probe"
-NOT_PROBE = (PROBE,)  # Store.answered(skip_kinds=…) for normal runs and the brief
 REV_PROPS = "ids|timestamp|user|userid|comment|size|tags|flags"
 WIKI_BUDGET = 1000  # Wikipedia requests per `pipeline run` (wikitext: one per 50 revisions)
-
-
-class Caller:
-    """Sends through Mubit within a call budget and a pace, logging every attempt. One run_id
-    per Caller."""
-
-    def __init__(self, client: Anthropic, store: Store, kind: str, max_calls: int, rate: float = 0.0):
-        self.client, self.store, self.kind = client, store, kind
-        self.run_id = f"{kind}-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}"
-        self.left = max_calls
-        self.rate = rate
-        self._last = float("-inf")
-
-    def call(
-        self, step: str, item_id: int, req: dict, parse: Callable, extra: dict | None = None
-    ) -> tuple[CallResult, int] | None:
-        """The last logged result and its row id, retried once if unparseable; None when the
-        budget was spent before the first attempt."""
-        got = None
-        for _ in range(2):
-            if self.left <= 0:
-                return got
-            self.left -= 1
-            time.sleep(max(0.0, self._last + self.rate - time.monotonic()))
-            self._last = time.monotonic()
-            res = send(self.client, req, parse)
-            res.extra.update(extra or {})
-            got = res, self.store.log_call(self.run_id, self.kind, step, item_id, res)
-            if not (res.error or "").startswith("unparseable reply"):
-                break
-        return got
 
 
 def _answered(got: tuple[CallResult, int] | None) -> tuple[dict | None, str | None]:
@@ -92,7 +69,11 @@ def _extract(caller: Caller, rev: dict, texts: dict[int, str], model: str) -> tu
     old = texts.get(rev["parentid"]) if rev.get("parentid") else ""
     new = texts.get(rev["revid"])
     if old is None or new is None:
-        return None, "wikitext unavailable (deleted or suppressed revision)"
+        # Absent from a complete reply: deleted or suppressed, so it can never be diffed. A probe
+        # records nothing, since probe activity never changes an edit's state.
+        if caller.kind != PROBE:
+            caller.store.log_unavailable(rev["revid"], "revision" if new is None else "parent")
+        return None, es.WIKITEXT_UNAVAILABLE
     diff, measured = edit_diff(old, new)
     measured["size_delta"] = rev["size_delta"]  # so a classification can be rebuilt from the log
     # Account facts are fixed with the extract, so a probe classify fed this row sends the same input.
@@ -123,19 +104,25 @@ def _result(rev: dict) -> dict:
     }
 
 
-def _resume(caller: Caller, rev: dict, texts: dict, model: str, ext: dict | None, cls: dict | None) -> dict:
-    """A normal run: whatever of extract and classify is not logged yet is sent."""
-    result, err = _result(rev), None
-    if ext is None:
+def _resume(caller: Caller, rev: dict, texts: dict, model: str, log: es.Log) -> dict:
+    """A normal run: the steps that are not final are sent, a final one is reused; an errored
+    edit is not sent at all. A skip-rule label is stored in place of a classify row."""
+    revid, result = rev["revid"], _result(rev)
+    state, err = es.edit_state(log, revid), None
+    ext, cls = log.extracted.get(revid), log.classified.get(revid)
+    if ext is None and state == es.OPEN:
         ext, err = _extract(caller, rev, texts, model)
     if ext is not None:
         result["extract"], result["served"]["extract"] = extract_of(ext["extra"]), ext["model_served"]
-        if cls is None:
+        if state == es.OPEN:
             cls, err = _classify(caller, rev, ext, model)
-        if err is None:
+            if cls is None and err is None:
+                measured = ext["extra"]["measured"]
+                caller.store.log_rule_label(revid, RULE_LABEL["label"], measured, ext["id"])
+        if err is None and state != es.ERRORED:
             result["classification"] = classification(ext["extra"], cls["extra"] if cls else None)
             result["served"]["classify"] = cls["model_served"] if cls else None
-    result["error"] = err
+    result["error"] = es.errored_reason(log, revid) if state == es.ERRORED else err
     return result
 
 
@@ -175,17 +162,21 @@ def run(
     """Revision dicts in snapshot format plus `title` and `account` (the snapshot's users
     entry, or None) through extract then classify, within the caller's budget and pace; a probe
     run when the caller's kind is `probe` (`chained` only applies there). Returns one result
-    per non-bot revision, in order."""
+    per non-bot revision, in order. At most four calls per edit (each step and its retry); a
+    failed wikitext fetch raises before any call and records nothing."""
     store = caller.store
     revs = [r for r in revisions if not is_bot(r)]
     probe = caller.kind == PROBE
     if probe:
         baseline = store.answered(steps.EXTRACT, skip_kinds=NOT_PROBE, first=True)
-        extracted, classified, todo = {}, {}, revs
+        state, todo = es.Log(), revs
     else:
-        extracted = store.answered(steps.EXTRACT, skip_kinds=NOT_PROBE)
-        classified = store.answered(steps.CLASSIFY, skip_kinds=NOT_PROBE)
-        todo = [r for r in revs if r["revid"] not in extracted]
+        state = es.read(store)
+        todo = [
+            r
+            for r in revs
+            if r["revid"] not in state.extracted and es.edit_state(state, r["revid"]) == es.OPEN
+        ]
     texts = fetch_texts([i for r in todo for i in (r["revid"], r.get("parentid")) if i]) if todo else {}
     out = []
     for rev in revs:
@@ -193,7 +184,7 @@ def run(
         if probe:
             result = _probe(caller, rev, texts, model, baseline.get(revid), chained)
         else:
-            result = _resume(caller, rev, texts, model, extracted.get(revid), classified.get(revid))
+            result = _resume(caller, rev, texts, model, state)
         if result["error"]:
             log(f"{revid}: {result['error']}")
         out.append(result)
@@ -287,11 +278,13 @@ def brief(
     page_analysis: dict,
     flagged_edits: list[dict],
     model: str = MODEL,
+    caller: Caller | None = None,
 ) -> CallResult | None:
-    """The page brief (at most two calls: one retry if the reply is empty). The logged result,
-    `extra["brief_md"]` holding the markdown with the closing line ensured."""
+    """The page brief (at most two calls: one retry if the reply is empty), through `caller`
+    when given (its budget, pace and run_id). The logged result, `extra["brief_md"]` holding the
+    markdown with the closing line ensured; None when the budget was spent."""
     pageid = page_analysis["pageid"]
-    caller = Caller(client, store, "brief", max_calls=2)
+    caller = caller or Caller(client, store, "brief", max_calls=2)
     user = steps.brief_message(page_analysis, flagged_edits)
     req = steps.build_request(steps.BRIEF, model, user, pageid)
     got = caller.call(steps.BRIEF, pageid, req, parse_brief)

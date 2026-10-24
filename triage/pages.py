@@ -18,6 +18,7 @@ from itertools import pairwise
 from pathlib import Path
 
 from . import corpus as cp
+from . import titles as title_index
 from .config import DATA_DIR
 from .reconcile import is_reverting
 from .wiki import REVERTED_TAG, editor_kind
@@ -191,7 +192,9 @@ def fetch_before(s, pageid: int, start: datetime) -> dict | None:
 
 def fetch_wikitext(s, revids: Iterable[int]) -> dict[int, str]:
     """Wikitext per revision id, paced and cached by the Session (wiki.fetch_contents sends the
-    same query uncached). Suppressed or deleted revisions are absent."""
+    same query uncached). Continuation is followed: a reply over MediaWiki's result-size limit
+    leaves revisions out and names them in `continue`. So only suppressed or deleted revisions
+    are absent."""
     todo = sorted(set(revids))
     out: dict[int, str] = {}
     for i in range(0, len(todo), WIKITEXT_BATCH):
@@ -202,11 +205,12 @@ def fetch_wikitext(s, revids: Iterable[int]) -> dict[int, str]:
             "rvprop": "ids|content",
             "rvslots": "main",
         }
-        for page in s.query(params)["query"].get("pages", []):
-            for rev in page.get("revisions", []):
-                content = rev.get("slots", {}).get("main", {}).get("content")
-                if content is not None:
-                    out[rev["revid"]] = content
+        for data in _continued(s, params):
+            for page in data["query"].get("pages", []):
+                for rev in page.get("revisions", []):
+                    content = rev.get("slots", {}).get("main", {}).get("content")
+                    if content is not None:
+                        out[rev["revid"]] = content
     return out
 
 
@@ -290,12 +294,14 @@ def load_snapshot(pageid: int, root: Path = SNAPSHOT_DIR) -> dict:
 
 def ingest(s, titles: list[str], as_of: datetime, days: int, root: Path = SNAPSHOT_DIR) -> list[dict]:
     """Snapshot every title (missing pages skipped, redirects to the same page kept once),
-    writing each file as soon as it is built."""
+    writing each file as soon as it is built and then recording the asked and resolved titles
+    in the title index beside the snapshot directory."""
 
     def one(title):
         snap = ingest_page(s, title, as_of, days)
         if snap:
             write_snapshot(snap, root)
+            title_index.record(root.parent, {title: snap["pageid"], snap["title"]: snap["pageid"]})
         return snap
 
     return list({snap["pageid"]: snap for snap in cp.parallel(one, titles) if snap}.values())

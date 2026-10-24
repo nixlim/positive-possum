@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Watchlist Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#07090d;--panel:#0d1117;--line:#1c2530;--ink:#d8e0ea;--dim:#75829a;--faint:#3a4556;
+  --frontier:#ffb547;--owned:#35e0d6;--keep:#4ade80;--revert:#ff5470;--unsure:#c6a7ff}
+*{box-sizing:border-box}html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--ink);font:13px/1.45 "IBM Plex Mono",ui-monospace,monospace;overflow:hidden}
+body::after{content:"";pointer-events:none;position:fixed;inset:0;background:repeating-linear-gradient(0deg,rgba(255,255,255,.025) 0 1px,transparent 1px 3px);mix-blend-mode:overlay}
+header{height:52px;display:flex;align-items:center;gap:18px;padding:0 18px;border-bottom:1px solid var(--line);background:linear-gradient(90deg,#0d1117,#0a0e14)}
+h1{font:700 18px "Chakra Petch",sans-serif;letter-spacing:.14em;text-transform:uppercase;margin:0}
+h1 b{color:var(--owned)}
+.meta{color:var(--dim);font-size:11px;letter-spacing:.06em}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--faint);margin-right:6px;vertical-align:middle}
+.dot.on{background:var(--keep);box-shadow:0 0 8px var(--keep);animation:pulse 1.6s infinite}
+@keyframes pulse{50%{opacity:.4}}
+main{display:grid;grid-template-columns:1fr 1.45fr 1fr;height:calc(100% - 52px)}
+section{border-right:1px solid var(--line);overflow:hidden;display:flex;flex-direction:column;min-width:0}
+section:last-child{border-right:0}
+h2{font:700 11px "Chakra Petch",sans-serif;letter-spacing:.22em;text-transform:uppercase;color:var(--dim);margin:0;padding:12px 16px 8px;border-bottom:1px dashed var(--line)}
+h3{font:700 10px "Chakra Petch",sans-serif;letter-spacing:.2em;text-transform:uppercase;color:var(--dim);margin:14px 0 4px}
+.scroll{overflow-y:auto;padding:10px 12px;flex:1}
+.card{border:1px solid var(--line);border-left:3px solid var(--faint);background:var(--panel);margin-bottom:10px;padding:10px 12px;cursor:pointer;animation:slide .45s cubic-bezier(.2,.8,.2,1) both}
+.card:hover,.card.sel{border-color:#2d3a4b}.card.sel{box-shadow:0 0 0 1px var(--owned) inset}
+.card.hot{border-left-color:var(--revert)}.card.warm{border-left-color:var(--frontier)}
+@keyframes slide{from{transform:translateX(-14px);opacity:0}to{transform:none;opacity:1}}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.title{font-weight:600;color:#fff;text-decoration:none;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+a.title:hover{text-decoration:underline}
+.chip{font:600 10px "Chakra Petch",sans-serif;letter-spacing:.12em;text-transform:uppercase;padding:2px 7px;border:1px solid;border-radius:2px}
+.chip.hot{color:var(--revert);border-color:var(--revert)}.chip.warm{color:var(--frontier);border-color:var(--frontier)}
+.chip.cool{color:var(--keep);border-color:var(--keep)}.chip.na{color:var(--faint);border-color:var(--faint)}
+.tag{font-size:10px;letter-spacing:.08em;padding:1px 6px;border-radius:2px;background:#131a23}
+.tag.frontier{color:var(--frontier)}.tag.owned{color:var(--owned);background:#0b2a2b}
+.sub{color:var(--dim);font-size:11px;margin-top:3px}
+svg.spark{display:block;margin-top:6px}svg.spark polyline{fill:none;stroke:var(--owned);stroke-width:1.5}
+.kv{display:grid;grid-template-columns:1fr auto;gap:4px 14px;padding:4px 4px;font-size:12px}
+.kv dt{color:var(--dim)}.kv dd{margin:0;text-align:right;color:#fff}
+.kv dd.owned{color:var(--owned)}.kv dd.frontier{color:var(--frontier)}.kv dd.na{color:var(--faint)}
+pre{margin:8px 0 0;font:11.5px/1.4 "IBM Plex Mono",monospace;white-space:pre-wrap;word-break:break-word;color:#9aa7ba}
+.btns{display:flex;gap:8px;margin:10px 0}
+button{font:700 11px "Chakra Petch",sans-serif;letter-spacing:.16em;text-transform:uppercase;padding:8px 12px;border:1px solid var(--owned);background:transparent;color:var(--owned);cursor:pointer}
+button:hover{background:var(--owned);color:#032}button:disabled{opacity:.35;cursor:default}
+.ev{padding:8px 10px;border-left:2px solid var(--faint);margin:8px 0;font-size:11.5px;animation:slide .4s both}
+.ev.hot{border-left-color:var(--revert)}.ev time{color:var(--faint);font-size:10px;margin-right:6px}
+.empty{color:var(--faint);padding:14px 4px;font-size:11px;letter-spacing:.06em}
+.log{position:fixed;left:12px;bottom:10px;color:var(--faint);font-size:10px;max-width:40vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:1100px){body{overflow:auto}main{grid-template-columns:1fr;height:auto}section{border-right:0;border-bottom:1px solid var(--line)}.scroll{max-height:70vh}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Watchlist <b>Desk</b></h1>
+  <span class="meta"><span class="dot" id="dot"></span><span id="conn">connecting</span></span>
+  <span class="meta" id="budget"></span>
+</header>
+<main>
+  <section><h2>Watchlist by risk</h2><div class="scroll" id="watchlist"></div></section>
+  <section><h2>Page</h2><div class="scroll" id="page"><div class="empty">Pick a page on the left.</div></div></section>
+  <section>
+    <h2>Live feed</h2><div class="scroll" id="feed"><div class="empty">Waiting for watched edits.</div></div>
+    <h2>Mubit status</h2><div class="scroll" id="status"></div>
+    <h2>Cost</h2><div class="scroll" id="cost"></div>
+  </section>
+</main>
+<div class="log" id="log"></div>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const STEPS = ["edit-extract", "edit-classify", "page-brief"];
+let selected = null;
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined && text !== null) e.textContent = String(text);
+  return e;
+}
+function fill(parent, ...kids) { parent.replaceChildren(...kids); return parent; }
+function log(msg) { $("log").textContent = msg; }
+function fmt(v) {
+  if (v === null || v === undefined) return "-";
+  if (typeof v === "number") return Number.isInteger(v) ? String(v) : v.toFixed(3);
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
+}
+function pct(v) { return v === null || v === undefined ? "-" : `${Math.round(100 * v)}%`; }
+function heat(score) { return score >= 60 ? "hot" : score >= 30 ? "warm" : "cool"; }
+function kv(pairs) {
+  const dl = el("dl", "kv");
+  for (const [k, v, cls] of pairs) {
+    dl.append(el("dt", null, k));
+    dl.append(el("dd", v === null || v === undefined ? "na" : cls || null, fmt(v)));
+  }
+  return dl;
+}
+function spark(counts) {
+  const ns = "http://www.w3.org/2000/svg", w = 180, h = 22;
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("class", "spark"); svg.setAttribute("width", w); svg.setAttribute("height", h);
+  const max = Math.max(1, ...counts), step = w / Math.max(1, counts.length - 1);
+  const line = document.createElementNS(ns, "polyline");
+  line.setAttribute("points", counts.map((c, i) => `${(i * step).toFixed(1)},${(h - 2 - (c / max) * (h - 4)).toFixed(1)}`).join(" "));
+  svg.append(line);
+  return svg;
+}
+async function getJSON(url) {
+  const r = await fetch(url);
+  return r.ok ? r.json() : null;
+}
+async function post(url) {  // the browser sends this page's Origin, which the API requires
+  const r = await fetch(url, {method: "POST"});
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) log(`${url}: ${r.status} ${body.reason || body.detail || ""}`);
+  return r.ok ? body : null;
+}
+const q = title => `title=${encodeURIComponent(title)}`;
+
+async function loadWatchlist() {
+  const rows = await getJSON("/api/watchlist") || [];
+  const box = $("watchlist");
+  if (!rows.length) return fill(box, el("div", "empty", "No watchlist page ingested yet: run `triage pages`."));
+  fill(box, ...rows.map(r => {
+    const c = el("div", `card ${heat(r.risk_score)}${r.title === selected ? " sel" : ""}`);
+    const top = el("div", "row");
+    top.append(el("span", "title", r.title), el("span", `chip ${heat(r.risk_score)}`, `${Math.round(r.risk_score)}${r.risk_partial ? "*" : ""}`));
+    c.append(top, el("div", "sub", `${r.edits_30d} edits · ${r.flagged_30d} flagged · ${r.reverted_30d} reverted (30d)`), spark(r.spark));
+    c.onclick = () => { selected = r.title; loadWatchlist(); loadPage(); };
+    return c;
+  }));
+}
+
+function flagCard(f) {
+  const cls = f.classification || {};
+  const c = el("div", `card ${cls.severity >= 2 ? "hot" : "warm"}`);
+  const top = el("div", "row");
+  const link = el("a", "title", `${cls.label || "?"} · severity ${fmt(cls.severity)}`);
+  link.href = f.diff_url; link.target = "_blank"; link.rel = "noopener";
+  top.append(link, el("span", "tag", f.editor_kind), el("span", "tag", f.timestamp));
+  c.append(top, el("div", "sub", cls.rationale || ""));
+  const served = f.served || {};
+  c.append(el("div", "sub", `${f.size_delta > 0 ? "+" : ""}${f.size_delta} bytes · ${cls.source || ""} · served ${served.extract || "-"} / ${served.classify || "-"}`));
+  return c;
+}
+
+async function loadPage() {
+  if (!selected) return;
+  const box = $("page");
+  const p = await getJSON(`/api/page?${q(selected)}`);
+  if (!p) return fill(box, el("div", "empty", `${selected} is not ingested.`));
+  const brief = await getJSON(`/api/page/brief?${q(selected)}`);
+  const btns = el("div", "btns");
+  const action = (label, url, after) => {
+    const b = el("button", null, label);
+    b.onclick = async () => { b.disabled = true; const r = await post(url); if (r) await after(r); b.disabled = false; };
+    return b;
+  };
+  btns.append(
+    action("Refresh", `/api/page/refresh?${q(selected)}`, () => Promise.all([loadPage(), loadWatchlist()])),
+    action("Classify 30d", `/api/page/classify?${q(selected)}`, r => { log(`queued ${r.queued}, already ${r.already}, errored ${r.errored}, pending ${r.pending}, skipped ${r.skipped}, ${r.remaining} calls left`); return loadPage(); }),
+    action(brief ? "Brief (cached)" : "Write brief", `/api/page/brief?${q(selected)}`, () => loadPage()),
+  );
+  const a = p.analytics, s = p.structure || {};
+  const kids = [
+    el("div", "title", p.title),
+    el("div", "sub", `risk ${Math.round(p.risk_score)}${p.risk_partial ? " (partial)" : ""} · as of ${p.as_of} · ${p.classify_pending} classifying · ${p.classify_errored} errored · ${p.classify_open} open${p.classify_stopped ? ` · stopped: ${p.classify_stopped === "wikipedia" ? "Wikipedia" : "Mubit"} budget` : ""}`),
+    btns,
+    el("h3", null, "Risk parts"), kv(Object.entries(p.risk_parts)),
+    el("h3", null, "Analytics"),
+    kv(Object.entries(a).filter(([, v]) => typeof v !== "object" || v === null)),
+    el("h3", null, `Flags (${p.flags.length})`),
+    ...(p.flags.length ? p.flags.map(flagCard) : [el("div", "empty", "No flagged edit: classify the last 30 days first.")]),
+    el("h3", null, "Editors"),
+    kv(p.editors.map(e => [`${e.name} (${e.kind}${e.spa ? ", SPA" : ""})`, `${e.edits} · ${pct(e.share)}`])),
+    el("h3", null, "Structure"),
+    kv(Object.entries(s).filter(([, v]) => typeof v !== "object" || v === null)),
+  ];
+  if (brief) kids.push(el("h3", null, `Brief · ${brief.model_served} · ${brief.generated_at}`), el("pre", null, brief.brief_md));
+  fill(box, ...kids);
+}
+
+const STOPPED = {budget: "not classified: Mubit budget", wikipedia: "not classified: Wikipedia budget"};
+function liveCard(ev) {
+  const c = el("div", `ev${ev.severity >= 2 || ev.review ? " hot" : ""}`);
+  c.append(el("time", null, ev.ts), el("b", null, ev.title));
+  const verdict = ev.stopped ? STOPPED[ev.stopped] || `not classified: ${ev.stopped}`
+    : ev.label === null ? "not classified" : `${ev.label} · sev ${ev.severity}${ev.review ? " · review" : ""}`;
+  c.append(el("div", "sub", `${ev.user_kind} · ${verdict} · served ${ev.served.extract || "-"}`));
+  c.onclick = () => window.open(`https://en.wikipedia.org/w/index.php?diff=${encodeURIComponent(ev.revid)}`, "_blank", "noopener");
+  return c;
+}
+function addLive(ev) {
+  const box = $("feed");
+  if (box.firstChild && box.firstChild.classList.contains("empty")) box.replaceChildren();
+  box.prepend(liveCard(ev));
+  while (box.children.length > 50) box.lastChild.remove();
+}
+
+async function loadStatus() {
+  const st = await getJSON("/api/mubit/status");
+  if (!st) return;
+  $("budget").textContent = `Mubit ${st.mubit.remaining} calls left · Wikipedia ${st.wikipedia.remaining} requests left`;
+  fill($("status"), ...STEPS.flatMap(step => {
+    const x = st[step];
+    const served = Object.entries(x.served_by).map(([m, n]) => `${m}×${n}`).join(", ") || null;
+    const agree = Object.entries(x.agreement).map(([k, v]) => [`agreement ${k}`, v && `${pct(v.value)} (n=${v.n})`]);
+    return [el("h3", null, step), kv([
+      ["requests / answered", `${x.requests} / ${x.answered}`],
+      ["errors gateway / unparseable", `${x.errors.gateway} / ${x.errors.unparseable}`],
+      ["served by", served, "owned"],
+      ["provider share", x.provider_share === null ? null : pct(x.provider_share), "frontier"],
+      ["latency p50 ms", x.latency_p50_ms],
+      ["tokens in / out", `${x.tokens_in} / ${x.tokens_out}`],
+      ["shift signals hard / soft", `${x.shift.hard.length} / ${x.shift.soft.length}`],
+      ...agree,
+      ...Object.entries(x.console).map(([k, v]) => [`console ${k}`, v]),
+    ])];
+  }));
+}
+
+async function loadCost() {
+  const c = await getJSON("/api/cost");
+  if (!c) return;
+  const t = c.tokens_per_call || {};
+  fill($("cost"),
+    kv([
+      ["provider $ per 1k edits", c.provider_per_1k_edits, "frontier"],
+      ["calls per edit", c.calls_per_edit],
+      ["tokens per call in / out", c.tokens_per_call && `${t.input} / ${t.output}`],
+      ["price $/Mtok in / out", `${c.price.input} / ${c.price.output}`],
+    ]),
+    ...c.assumptions.map(a => el("div", "sub", `· ${a}`)));
+}
+
+function connect() {
+  const es = new EventSource("/api/live");
+  es.addEventListener("open", () => { $("dot").className = "dot on"; $("conn").textContent = "live"; });
+  es.addEventListener("error", () => { $("dot").className = "dot"; $("conn").textContent = "reconnecting"; });
+  es.addEventListener("snapshot", e => {
+    const edits = JSON.parse(e.data).edits;
+    if (edits.length) $("feed").replaceChildren();  // a reconnect sends the recent edits again
+    for (const ev of edits.slice().reverse()) addLive(ev);
+  });
+  es.addEventListener("edit", e => { addLive(JSON.parse(e.data)); loadStatus(); });
+}
+
+loadWatchlist(); loadStatus(); loadCost(); connect();
+setInterval(() => { loadStatus(); loadCost(); if (selected) loadPage(); }, 15000);
+</script>
+</body>
+</html>

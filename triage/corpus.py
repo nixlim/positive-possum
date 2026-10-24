@@ -8,6 +8,7 @@ as a comparison. Pure helpers (windows, linking, sampling) are tested."""
 
 from __future__ import annotations
 
+import contextvars
 import gzip
 import hashlib
 import json
@@ -16,8 +17,10 @@ import re
 import threading
 import time
 from collections import Counter, defaultdict
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
@@ -143,13 +146,25 @@ def choose_sample(edits: list[dict], n: int, seed: int = 0) -> tuple[list[dict],
 # ---- cached, counted HTTP --------------------------------------------------
 
 
+class BudgetSpent(SystemExit):
+    """A request the Session refused: beyond its budget, or into its reserve outside
+    `using_reserve()`. A SystemExit, so a CLI run still ends with the message."""
+
+
+# Sessions whose reserve the current context may spend. A contextvar rather than a thread-local
+# so `parallel` can hand it to its pool threads (fetch_users fans out through it).
+_RESERVED: ContextVar[tuple] = ContextVar("reserved_sessions", default=())
+
+
 class Session:
     """wiki._client() plus an on-disk gzip cache, a request budget, and a pace of at most
-    `per_min` requests a minute shared by every thread (retries included)."""
+    `per_min` requests a minute shared by every thread (retries included). The last `reserve`
+    requests of the budget are only sent from inside `using_reserve()` (PIPELINE.md section 9)."""
 
-    def __init__(self, root: Path, budget: int, per_min: float = REQUESTS_PER_MIN):
+    def __init__(self, root: Path, budget: int, per_min: float = REQUESTS_PER_MIN, reserve: int = 0):
         self.root = root
         self.budget = budget
+        self.reserve = reserve
         self.interval = 60.0 / per_min
         self.sent: Counter[str] = Counter()
         self.hits = 0
@@ -158,11 +173,24 @@ class Session:
         self.client = _client()
         self.client.event_hooks["request"] = [self._on_request]
 
+    @contextmanager
+    def using_reserve(self) -> Iterator[None]:
+        """Requests made in this context (this thread, and `parallel` work it starts) may spend
+        the reserve; other threads still stop at it."""
+        token = _RESERVED.set((*_RESERVED.get(), self))
+        try:
+            yield
+        finally:
+            _RESERVED.reset(token)
+
     def _on_request(self, request) -> None:
         with self._lock:
+            kept = 0 if any(s is self for s in _RESERVED.get()) else self.reserve
+            if self.sent.total() >= self.budget - kept:
+                if kept:
+                    raise BudgetSpent(f"request budget of {self.budget} spent down to its reserve of {kept}")
+                raise BudgetSpent(f"request budget of {self.budget} spent; re-run resumes from the cache")
             self.sent[request.url.host] += 1
-            if self.sent.total() > self.budget:
-                raise SystemExit(f"request budget of {self.budget} spent; re-run resumes from the cache")
             now = time.monotonic()
             slot = max(now, self._next_slot)
             self._next_slot = slot + self.interval
@@ -200,8 +228,11 @@ class Session:
 
 
 def parallel(fn: Callable, items: list) -> list:
+    """fn over items on WORKERS threads, in order; each item runs in a copy of the caller's
+    context, so a Session's `using_reserve()` reaches the pool threads."""
     with ThreadPoolExecutor(WORKERS) as pool:
-        return list(pool.map(fn, items))
+        futures = [pool.submit(contextvars.copy_context().run, fn, item) for item in items]
+        return [f.result() for f in futures]
 
 
 # ---- network ---------------------------------------------------------------
