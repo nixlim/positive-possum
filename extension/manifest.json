@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Edit watch",
+  "version": "0.1.0",
+  "description": "Signals for human review about recent edits to the English Wikipedia article you are reading.",
+  "permissions": ["storage"],
+  "host_permissions": ["https://en.wikipedia.org/*", "http://127.0.0.1:8322/*"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_title": "Edit watch: open or close the drawer" },
+  "options_page": "options.html",
+  "content_scripts": [
+    {
+      "matches": ["https://en.wikipedia.org/wiki/*"],
+      "js": [
+        "shared.js",
+        "content/dom.js",
+        "content/style.js",
+        "content/tabs.js",
+        "content/mubit.js",
+        "content/ui.js",
+        "content/main.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

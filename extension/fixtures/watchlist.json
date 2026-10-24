@@ -1,0 +1,35 @@
+[
+  {
+    "title": "Example Person (fixture)",
+    "pageid": 990000001,
+    "risk_score": 77.5,
+    "risk_partial": false,
+    "flagged_30d": 4,
+    "edits_30d": 23,
+    "reverted_30d": 2,
+    "last_edit_at": "2026-10-23T19:30:00Z",
+    "spark": [0, 0, 1, 0, 0, 0, 1, 0, 0, 2, 0, 0, 0, 1, 0, 0, 2, 7, 3, 0, 0, 1, 0, 0, 2, 0, 1, 0, 2, 0]
+  },
+  {
+    "title": "Sample Office Holder (fixture)",
+    "pageid": 990000002,
+    "risk_score": 41.0,
+    "risk_partial": false,
+    "flagged_30d": 1,
+    "edits_30d": 9,
+    "reverted_30d": 1,
+    "last_edit_at": "2026-10-21T08:12:00Z",
+    "spark": [0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0]
+  },
+  {
+    "title": "Placeholder Representative (fixture)",
+    "pageid": 990000003,
+    "risk_score": 12.0,
+    "risk_partial": true,
+    "flagged_30d": 0,
+    "edits_30d": 3,
+    "reverted_30d": 0,
+    "last_edit_at": "2026-10-10T17:45:00Z",
+    "spark": [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0]
+  }
+]

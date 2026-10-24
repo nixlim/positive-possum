@@ -1,0 +1,5 @@
+{
+  "brief_md": "## What changed\nOver 90 days the article grew from 2,500 to 3,510 words. Most of the growth is outside the \"Expenses inquiry\" section, which shrank from 640 to 290 words and moved from position 3 to 6.\n\n## Who\nThree accounts made 75% of 40 edits. One registered account made 18 edits and appears to edit mostly this page.\n\n## Pattern\nEdits cluster on 12 and 13 October (10 edits). Flagged edits on those days removed sourced material about the inquiry and added favourable, thinly sourced detail.\n\n## Why now\nHypothesis: the timing is consistent with renewed attention to the subject; nothing given here confirms a cause.\n\n## Suggested checks\n- Compare revision 990000131 with its parent and check whether the removed citations still support the remaining text.\n- Check the sourcing of the new awards and community work sections.\n- Compare the section order with similar articles.\n\nSignals for human review, not findings.",
+  "generated_at": "2026-10-24T14:05:40+00:00",
+  "model_served": "claude-sonnet-5-5"
+}

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Edit watch · options</title>
+<style>
+body{margin:0;background:#07090d;color:#d8e0ea;font:13px/1.5 "IBM Plex Mono",ui-monospace,monospace}
+main{max-width:560px;padding:28px 32px}
+h1{font:700 18px "Chakra Petch",system-ui,sans-serif;letter-spacing:.14em;text-transform:uppercase;margin:0 0 22px}
+h1 b{color:#35e0d6}
+label{display:block;margin:0 0 18px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#75829a}
+input[type=url]{display:block;width:100%;margin-top:6px;background:transparent;border:0;border-bottom:1px solid #3a4556;color:#fff;font:inherit;font-size:13px;padding:4px 0;outline:0;text-transform:none;letter-spacing:0}
+label.check{text-transform:none;letter-spacing:0;font-size:12px;color:#d8e0ea}
+button{font:700 12px "Chakra Petch",system-ui,sans-serif;letter-spacing:.18em;text-transform:uppercase;padding:8px 18px;border:1px solid #35e0d6;background:transparent;color:#35e0d6;cursor:pointer}
+button:hover{background:#35e0d6;color:#031}
+#saved{margin-left:12px;color:#4ade80;font-size:11px}
+.note{color:#75829a;font-size:11px;margin-top:22px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Edit <b>watch</b></h1>
+  <label>Backend URL<input id="backend" type="url" placeholder="http://127.0.0.1:8322"></label>
+  <label class="check"><input id="demo" type="checkbox"> Demo mode: show the bundled fixtures and never call the backend</label>
+  <button id="save">Save</button><span id="saved"></span>
+  <p class="note">When the backend is unreachable the extension shows the bundled fixtures (a synthetic article) and marks them "offline". Only http://127.0.0.1:8322 is in the extension's host permissions; any other backend must allow cross-origin requests.</p>
+</main>
+<script src="shared.js"></script>
+<script src="options.js"></script>
+</body>
+</html>

@@ -1,0 +1,41 @@
+{
+  "edit-extract": {
+    "requests": 412,
+    "answered": 407,
+    "errors": {"gateway": 3, "unparseable": 2},
+    "served_by": {"claude-sonnet-5-5": 407},
+    "provider_share": 1.0,
+    "latency_p50_ms": 3120,
+    "tokens_in": 812400,
+    "tokens_out": 96300,
+    "shift": {"hard": [], "soft": []},
+    "agreement": {"extract": {"value": 0.94, "n": 48}, "classify": null, "chained": null},
+    "console": {"kept_examples": 18, "adapter_version": "none yet", "test_result": "not run", "updated_at": "2026-10-24T13:30:00+00:00"}
+  },
+  "edit-classify": {
+    "requests": 268,
+    "answered": 266,
+    "errors": {"gateway": 1, "unparseable": 1},
+    "served_by": {"claude-sonnet-5-5": 266},
+    "provider_share": 1.0,
+    "latency_p50_ms": 2480,
+    "tokens_in": 241200,
+    "tokens_out": 40100,
+    "shift": {"hard": [], "soft": []},
+    "agreement": {"extract": null, "classify": {"value": 0.92, "n": 48}, "chained": {"value": 0.85, "n": 46}},
+    "console": {"kept_examples": 11, "adapter_version": "none yet", "test_result": "not run", "updated_at": "2026-10-24T13:30:00+00:00"}
+  },
+  "page-brief": {
+    "requests": 6,
+    "answered": 6,
+    "errors": {"gateway": 0, "unparseable": 0},
+    "served_by": {"claude-sonnet-5-5": 6},
+    "provider_share": 1.0,
+    "latency_p50_ms": 9800,
+    "tokens_in": 21000,
+    "tokens_out": 2900,
+    "shift": {"hard": [], "soft": []},
+    "agreement": {"extract": null, "classify": null, "chained": null},
+    "console": {"kept_examples": 0, "adapter_version": "none yet", "test_result": "not run", "updated_at": "2026-10-24T13:30:00+00:00"}
+  }
+}
