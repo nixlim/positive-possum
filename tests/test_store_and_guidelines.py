@@ -26,6 +26,24 @@ def test_latest_prediction_ignores_correct_resends(tmp_path):
     assert s.latest_prediction("godot", 7) == ["bug"]
 
 
+def test_answered_latest_or_first_skipping_kinds(tmp_path):
+    s = Store(tmp_path / "t.sqlite")
+    ids = [
+        s.log_call("p0", "probe", "edit-extract", 7, _res([], served="probe-0")),
+        s.log_call("r1", "pipeline", "edit-extract", 7, _res([], error="boom")),
+        s.log_call("r2", "pipeline", "edit-extract", 7, _res([], served="first")),
+        s.log_call("r3", "live", "edit-extract", 7, _res([], served="later")),
+        s.log_call("p4", "probe", "edit-extract", 7, _res([], served="probe-4")),
+    ]
+    assert ids == sorted(ids) and len(set(ids)) == 5
+    assert s.answered("edit-extract")[7]["model_served"] == "probe-4"
+    latest = s.answered("edit-extract", skip_kinds=("probe",))[7]
+    assert (latest["id"], latest["model_served"]) == (ids[3], "later")
+    first = s.answered("edit-extract", skip_kinds=("probe",), first=True)[7]
+    assert (first["id"], first["model_served"], first["extra"]) == (ids[2], "first", {})
+    assert s.answered("edit-extract", first=True)[7]["model_served"] == "probe-0"
+
+
 def test_parse_labels_drops_unknown():
     kept, unknown, extra = parse_labels(
         '{"labels": ["bug", "made-up", "bug"], "reason": "pov"}', {"bug", "crash"}

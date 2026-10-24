@@ -77,8 +77,9 @@ class Store:
 
     def log_call(
         self, run_id: str, kind: str, repo: str, issue: int, r: CallResult, truth: list[str] | None = None
-    ) -> None:
-        self.db.execute(
+    ) -> int:
+        """Logs one call; returns its row id."""
+        cur = self.db.execute(
             "INSERT INTO calls (ts, run_id, kind, route, repo, issue, model_asked, model_served, request_id,"
             " latency_ms, prompt_tokens, completion_tokens, labels, truth, error, headers, raw, extra)"
             " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -104,6 +105,7 @@ class Store:
             ),
         )
         self.db.commit()
+        return cur.lastrowid
 
     def calls_since(self, repo: str, kinds: tuple[str, ...], since_ts: str) -> list[dict]:
         """Answered and errored calls of the given kinds since an ISO timestamp, oldest first."""
@@ -132,6 +134,26 @@ class Store:
             }
             for r in rows
         ]
+
+    def answered(self, repo: str, skip_kinds: tuple[str, ...] = (), first: bool = False) -> dict[int, dict]:
+        """Latest (or `first`) non-error call per issue of a repo, calls of `skip_kinds` left out:
+        {issue: {id, model_served, labels, extra}}. The pipeline resumes from it and chains
+        classify to its extract row."""
+        marks = ",".join("?" * len(skip_kinds))
+        rows = self.db.execute(
+            "SELECT id, issue, model_served, labels, extra FROM calls WHERE repo=? AND error IS NULL"
+            f" AND kind NOT IN ({marks}) ORDER BY id {'DESC' if first else 'ASC'}",
+            (repo, *skip_kinds),
+        )
+        return {
+            r[1]: {
+                "id": r[0],
+                "model_served": r[2],
+                "labels": json.loads(r[3]),
+                "extra": json.loads(r[4]) if r[4] else {},
+            }
+            for r in rows
+        }
 
     def log_run(
         self, run_id: str, kind: str, route: str, repo: str, n: int, errors: int, metrics: dict

@@ -7,6 +7,8 @@ import json
 import sys
 import time
 from datetime import date
+from functools import partial
+from pathlib import Path
 
 from . import guidelines as gl
 from . import pages as pg
@@ -157,6 +159,53 @@ def cmd_pages(a):
         print(f"wrote {path}")
 
 
+def cmd_pipeline_run(a):
+    from . import pipeline
+    from .corpus import Session
+
+    if a.chained and a.kind != pipeline.PROBE:
+        raise SystemExit("--chained applies to --kind probe only")
+    session = Session(DATA_DIR / "pages", pipeline.WIKI_BUDGET)
+    if a.revids:
+        revs = pipeline.fetch_revisions(session, [int(x) for x in a.revids.split(",") if x.strip()])
+    else:
+        titles = {t.strip() for t in a.titles.split("|")} if a.titles else None
+        revs = pipeline.load_snapshots(a.snapshots or DATA_DIR / "pages" / "snapshots", titles)
+    if not revs:
+        raise SystemExit("no revisions to run")
+    caller = pipeline.Caller(client(), Store(), a.kind, a.max_calls, a.rate)
+    results = pipeline.run(
+        caller, revs, partial(pg.fetch_wikitext, session), model=a.model, chained=a.chained
+    )
+    for r in results:
+        print(json.dumps(r, ensure_ascii=False))
+    print(
+        f"{len(results)} revisions; {a.max_calls - caller.left} Mubit calls;"
+        f" {session.sent.total()} wiki requests"
+    )
+
+
+def cmd_pipeline_brief(a):
+    from . import page_analytics, pipeline
+
+    root = a.snapshots or DATA_DIR / "pages" / "snapshots"
+    snap = next((s for s in pipeline.snapshots(root) if s["title"] == a.title), None)
+    if snap is None:
+        raise SystemExit(f"no snapshot of {a.title!r} under {root}; run `triage pages ingest` first")
+    store = Store()
+    edits = pipeline.logged_edits(store, [r["revid"] for r in snap["revisions"]])
+    analysis = page_analytics.analyse(snap, edits)
+    flagged = [
+        {**r, "classification": edits[r["revid"]]["classification"]}
+        for r in snap["revisions"]
+        if page_analytics.is_flagged((edits.get(r["revid"]) or {}).get("classification"))
+    ]
+    res = pipeline.brief(client(), store, analysis, flagged, model=a.model)
+    if res is None or res.error:
+        raise SystemExit(f"brief failed: {res.error if res else 'budget spent'}")
+    print(res.extra["brief_md"])
+
+
 def repos_with_dataset() -> list[str]:
     return [k for k in REPOS if (DATA_DIR / k / "issues.jsonl").exists()]
 
@@ -239,6 +288,29 @@ def _pages_parser(sub) -> None:
         ps.set_defaults(fn=cmd_pages)
 
 
+def _pipeline_parser(sub) -> None:
+    s = sub.add_parser("pipeline", help="watchlist pipeline: edits through extract and classify")
+    steps_ = s.add_subparsers(dest="pipeline_cmd", required=True)
+    s = steps_.add_parser("run", help="run revisions through edit-extract then edit-classify (resumes)")
+    src = s.add_mutually_exclusive_group()
+    src.add_argument("--titles", help="A|B: only these pages of the snapshots")
+    src.add_argument("--revids", help="1,2,3: these revisions, fetched from the API (at most 50)")
+    s.add_argument("--snapshots", type=Path, help="default: data/pages/snapshots")
+    s.add_argument("--max-calls", type=int, default=50, help="Mubit calls at most, retries included")
+    s.add_argument("--rate", type=float, default=1.0, help="minimum seconds between Mubit calls")
+    s.add_argument("--kind", default="pipeline", choices=("pipeline", "live", "probe"))
+    s.add_argument(
+        "--chained", action="store_true", help="probe only: also classify from the fresh probe extract"
+    )
+    s.add_argument("--model", default=MODEL)
+    s.set_defaults(fn=cmd_pipeline_run)
+    s = steps_.add_parser("brief", help="brief one page from its snapshot and the logged classifications")
+    s.add_argument("--title", required=True)
+    s.add_argument("--snapshots", type=Path, help="default: data/pages/snapshots")
+    s.add_argument("--model", default=MODEL)
+    s.set_defaults(fn=cmd_pipeline_brief)
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="triage")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -282,6 +354,7 @@ def main(argv=None):
     _corpus_parser(sub)
     _serve_parser(sub)
     _pages_parser(sub)
+    _pipeline_parser(sub)
     _watch_parser(sub)
 
     a = p.parse_args(argv)

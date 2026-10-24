@@ -1,15 +1,20 @@
-"""One classify call through Mubit, with everything needed to detect later
-that Mubit started serving a different model.
+"""One call through Mubit, with everything needed to detect later that Mubit
+started serving a different model.
 
 Mubit is the only egress (hackathon rule: every LLM call goes through it). The
 Anthropic SDK is pointed at Mubit's Anthropic base URL with the Mubit key as
-its only credential."""
+its only credential.
+
+`send` takes a ready request (prompt.build_request or steps.build_request) and a
+parser for the reply text, so the triage tasks and the pipeline steps share one
+code path; `classify` is `send` with the label parser, its request unchanged."""
 
 from __future__ import annotations
 
 import json
 import os
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from anthropic import Anthropic, APIStatusError
@@ -89,7 +94,16 @@ def classify(
     """Always returns a CallResult; any failure is recorded in `error`, never raised."""
     req = build_request(model, full_name, labels, issue, guidelines, kind)
     allowed = {lab["name"] for lab in labels}
-    res = CallResult([], model, None, None, 0, None, None)
+    return send(client, req, lambda text: parse_labels(text, allowed))
+
+
+def send(
+    client: Anthropic, req: dict, parse: Callable[[str], tuple[list[str], list[str], dict]]
+) -> CallResult:
+    """One request. `parse` turns the reply text into (labels, unknown labels, extra) and raises
+    ValueError on a reply it cannot use, which is recorded as an unparseable reply. Always
+    returns a CallResult; any failure is recorded in `error`, never raised."""
+    res = CallResult([], req["model"], None, None, 0, None, None)
     t0 = time.perf_counter()
     try:
         raw = client.messages.with_raw_response.create(**req)
@@ -119,7 +133,7 @@ def classify(
         text = "".join(b.text for b in resp.content if b.type == "text")
         if not text:
             raise ValueError(f"no text in reply (stop_reason={resp.stop_reason})")
-        res.labels, res.unknown_labels, res.extra = parse_labels(text, allowed)
+        res.labels, res.unknown_labels, res.extra = parse(text)
     except Exception as e:
         res.labels, res.unknown_labels, res.extra = [], [], {}
         res.error = f"unparseable reply: {type(e).__name__}: {e}"[:500]
