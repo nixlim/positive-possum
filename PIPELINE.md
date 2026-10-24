@@ -22,6 +22,7 @@ edits, not editors.
 | Citations | `<ref>` tags added/removed are counted in code, not asked of the model. |
 | Chained steps | Each classify call records which extract call fed it and who served that extract, so drift between steps can be measured. |
 | Demo pages | Found with the Wikipedia API by a deterministic candidate finder (section 6), then chosen by a human. |
+| Coverage | Any English Wikipedia article, not only the watchlist. The first visit reads the article's history from Wikipedia (cached, no Mubit calls) and shows the page analytics. For an article outside the watchlist, Mubit runs only when a person clicks "Classify recent edits" or "Request brief" (section 10). The watchlist (section 4) feeds the dashboard and the live feed, and for watchlist articles the live feed also runs extract and classify on each new edit (section 9, `/api/live`). |
 
 ## 2. What Mubit gives us
 
@@ -62,14 +63,18 @@ Wikipedia API ──► pages.py (snapshots, cached)  ──► page_analytics.p
 ```
 
 Reused as is: `wiki.py` (User-Agent, maxlag, 429/503 retry, `diff_text`, `editor_kind`),
-`corpus.Session` (paced, cached, budgeted requests), `live.py` (EventStreams), `store.Store`
-(call log), `intent.py` (revert reasons), `reconcile.py` (what Wikipedia did next). The patrol
-desk (`triage serve`, :8321) keeps working.
+`live.py` (EventStreams), `store.Store` (call log), `intent.py` (revert reasons),
+`reconcile.py` (what Wikipedia did next). The patrol desk (`triage serve`, :8321) keeps working.
 
 Changed: `corpus.fetch_users` today requests only `usprop=editcount|registration`. It gains an
 opt-in `groups=True` that adds `groups` to `usprop` and returns it per user, so bot accounts can
 be excluded (section 4). The default request is unchanged, so the existing corpus cache stays
 valid.
+Changed: `corpus.Session` (paced, cached, budgeted requests) gains an opt-in `reserve` (default
+0) and a `using_reserve()` context manager (scoped to the calling thread through a thread-local
+or contextvar flag), and raises `corpus.BudgetSpent` (a subclass of
+`SystemExit`) when a request is refused (section 9, Wikipedia budget). With the defaults the
+CLI's behaviour and message are unchanged.
 Not reused: `wiki.fetch_contents` calls `_api` directly and bypasses the `Session` cache, so
 wikitext is fetched by the new cached `pages.fetch_wikitext` (section 4).
 
@@ -160,8 +165,14 @@ Window 90 days; the badge and `*_30d` fields use the last 30.
   lot while the controversy share falls and its rank moves down. No model output is involved.
 - `negative_words_removed`: words removed by edits whose extract says `negative_info` is
   `removed` or `softened` (null until the pipeline has run on the page).
-- `flagged_30d`: edits classified `review: true` or `severity ≥ 2` (0 and `risk_partial: true`
-  until the pipeline has run).
+- `flagged_30d`: edits classified `review: true` or `severity ≥ 2`, counted over classified edits
+  only (classified and errored are defined once, in section 7.4). `risk_partial` is true while
+  any edit in the 30-day window is not classified: not yet sent, queued or running, open after a
+  gateway error, or errored (a final error, or a revision Wikipedia no longer serves; section
+  7.4). An errored edit keeps it true for good, so a window where every call failed never shows
+  a confident 0; `classify_errored` (section 9) counts those edits so the badge and banner can
+  say why. This is the rule `page_analytics.analyse` already applies (an
+  edit without a `classification` is partial).
 - `risk_score` (0–100) = 30·min(1, flagged_30d/5) + 20·top3_share
   + 15·min(1, max(0, controversy_rank_now − controversy_rank_then)/3) + 15·min(1, reverted_30d/3)
   + 10·new_account_share + 10·[spa_count > 0]. Returned with `risk_parts` (points per term).
@@ -321,9 +332,41 @@ Code appends the closing line if the reply lacks it. Generated on demand and cac
 - `metadata.user_id`: `enwiki#{revid}` for extract and classify, `enwiki-page#{pageid}` for brief.
 - `max_tokens`: 1024 (extract, classify), 1536 (brief). Fixed per step.
 - One retry on an unparseable reply, then the row stays an error. Never loop: every call is
-  training data and counts toward the cap.
+  training data and counts toward the cap, so one run (for the API, one queued job) costs an
+  edit at most four calls (extract, its retry, classify, its retry). Across runs there is no
+  per-edit total: a gateway error leaves its step open (below), and every later run or
+  `POST /api/page/classify` that sends it may spend up to four more calls on that edit, each
+  counted against the Mubit cap and the API's call budget. A step that is final is never sent
+  again.
+- **Final, per step.** Only non-probe rows (`kind` `pipeline`, `page` or `live`) and rule labels
+  decide finality; probe rows (section 8) never change an edit's state. An edit's extract step,
+  and separately its classify step, is final when it has an answered row (for classify, also a
+  rule label, below) or a **final error**: an unparseable reply whose one retry was also
+  unparseable. An answered row takes precedence over any error row of the same step, so a step
+  with both counts as answered. A gateway error (an HTTP error such as
+  the call-cap `429`, a connection error or a timeout; section 8) is never final, on the first
+  call or on the retry: the row is logged, nothing more is sent for that edit in that run, and
+  the step stays open, so a later run or `POST /api/page/classify` sends it again. A later send
+  skips a step that is already final (an answered extract is reused, and only classify is sent).
+  An edit is **classified** when its classify step is answered or rule-labelled, and **errored**
+  when it is not classified and either step has a final error (an extract final error means
+  classify is never sent) or its diff is unavailable (next rule). Resume, section 5 and section 9
+  all use these definitions.
+- **Unavailable diff.** Before extract, the wikitext of the revision and of its parent (none for
+  a page creation, `parentid` 0, which diffs against empty text) is read with
+  `pages.fetch_wikitext`. A revid absent from a successful reply (the revision is
+  revision-deleted or suppressed, which `fetch_wikitext` leaves out) can never be diffed, so this
+  is final: no Mubit call is made, and the store's `unavailable_diffs` table records (revid,
+  missing `revision`|`parent`, ts), read by resume and section 9 like a final error. A fetch that
+  fails (a connection error, timeout or HTTP error after `wiki`'s retries, a MediaWiki API error
+  payload, for which `wiki._api` raises a plain `SystemExit` (a `maxlag` error still returned
+  after `wiki`'s retries included), or a request the Wikipedia budget refuses) is transient:
+  nothing is recorded and the step stays open.
 - Skip classify for edits with |size_delta| < 20 and no claims in the extract; they are labelled
-  `maintenance` in code (`source: "rule"`), not sent.
+  `maintenance` in code (`source: "rule"`), not sent. No call was made, so the result is not a
+  calls-table row: it is stored in the store's `rule_labels` table (revid, label, measured facts,
+  `extract_call_id`, ts), which resume, `POST /api/page/classify` (`already`) and
+  `Edit.classification` read like an answered classify row.
 - Forced review (code, after classify or the skip rule, never sent to the model): `review` is set
   to `true` when the measured facts show `refs_removed ≥ 1`, or `words_removed − words_added ≥ 50`,
   or `words_removed > 0` in a section whose title matches the controversy pattern of section 5.
@@ -339,7 +382,7 @@ Every call, failures included, goes to `Store.log_call` before anything else use
 | Column | extract | classify | brief |
 | --- | --- | --- | --- |
 | `repo` | `edit-extract` | `edit-classify` | `page-brief` |
-| `kind` | `pipeline` (batch), `live` (stream), `probe` (repeat run) | same | `brief` |
+| `kind` | `pipeline` (batch CLI), `page` (`POST /api/page/classify`), `live` (stream), `probe` (repeat run) | same | `brief` |
 | `issue` | revid | revid | pageid |
 | `labels` | `[]` | `[label]` | `[]` |
 | `extra` | parsed JSON + measured facts | parsed JSON + `{"extract_call_id", "extract_served"}` | `{"brief_md"}` |
@@ -424,41 +467,143 @@ Protection (the API spends the Mubit call cap and the Wikipedia request budget):
   `--extension-origin`, repeatable). A missing or other `Origin` gets `403`. CORS is answered only
   for these origins. A plain `<img>` or link from another page can then only reach the read-only
   `GET`s, which never call Mubit and never fetch from Wikipedia.
-- **State changes are POST**: brief generation and re-ingest are `POST`; every `GET` reads cached
-  data only.
+- **State changes are POST**: ingest, classification and brief generation are `POST`; every
+  `GET` reads cached data only.
 - **Mubit budget**: one shared limiter in the API process covers every call it makes (`live`,
-  `brief`, `probe`): `--call-budget` (total calls for the process lifetime, default 300) and
-  `--min-interval` (seconds between calls, default 2.0, like `Patrol(min_interval_s=…)`). When the
-  budget is spent, live edits are shown with `classification: null` and `POST /api/page/brief`
-  returns `429`. Spent and remaining calls are reported in `/api/mubit/status`.
-- **Wikipedia budget**: ingestion through the API is limited to watchlist titles (others get
-  `404`), and runs through `corpus.Session` with `--request-budget` (default 2,000).
+  `classify`, `brief`, `probe`): `--call-budget` (total calls for the process lifetime, default 300) and
+  `--min-interval` (seconds between calls, default 2.0, like `Patrol(min_interval_s=…)`).
+  `--live-reserve` calls (default 60) are kept for `live`: `classify` and `brief` may spend only
+  down to the reserve, so one page's classification cannot starve the live feed. When the budget
+  is spent, live edits are shown unclassified with `stopped: "budget"`; when only the reserve is left,
+  `POST /api/page/classify` and `POST /api/page/brief` return `429`. Spent and remaining calls are
+  reported in `/api/mubit/status`.
+- **Wikipedia budget**: any namespace-0 enwiki article can be ingested, but only by
+  `POST /api/page/refresh` (the extension sends it on the first visit to an article with no
+  snapshot). Classification and the live feed also spend it: diff wikitext comes from
+  `pages.fetch_wikitext`. Every request goes through one `corpus.Session` with `--request-budget`
+  (default 2,000, roughly 70 to 200 articles). `--wiki-live-reserve` requests (default 300) are
+  kept for the live feed's diff fetches: refresh and classify may spend only down to the reserve
+  and return `429` once only the reserve is left, so browsing articles cannot starve the live
+  feed. The reserve is enforced on every request, inside `corpus.Session` (section 3), not
+  estimated before an ingest: the Session is built with `reserve=--wiki-live-reserve`, the live
+  thread makes its requests inside `s.using_reserve()`, and any other request that would leave
+  fewer than `reserve` requests (or any request beyond the budget) is refused with
+  `corpus.BudgetSpent`. Cache hits are not requests and are never refused. `using_reserve()` is
+  scoped to the calling thread: it sets a thread-local (or contextvar) flag, and the Session's
+  request hook reads that flag under the Session lock, so a refresh or classify request running
+  on another thread while the live thread is inside `using_reserve()` is still refused at the
+  reserve. The Session's lock serialises the check, so concurrent refreshes cannot overshoot
+  together. api.py catches `SystemExit` (which covers `BudgetSpent` and the plain `SystemExit`
+  that `wiki._api` raises on a MediaWiki API error payload, section 7.4) around every refresh,
+  every classify job and every live edit, so it never ends the server, the worker or the live
+  thread. `BudgetSpent` maps to `429 {"reason": "wikipedia"}` for a refresh and to
+  `stopped: "wikipedia"` / `classify_stopped: "wikipedia"`; any other error is a transient
+  failure: a refresh returns `502` (no snapshot or index entry written), a classify job is
+  dropped with its step left open, and a live edit arrives with no Mubit call, `label`,
+  `severity` and `review` null and `stopped: null`.
+  A refresh refused mid-ingest writes no snapshot and
+  no title-index entry (both are written only after the whole ingest succeeds) and returns `429`
+  `{"reason": "wikipedia"}`; the replies it already received stay in the Session cache, so a
+  later refresh resumes from them. When the whole budget is spent, live edits still arrive (the stream itself is not
+  budgeted) with no Mubit call, `label`, `severity` and `review` null and `stopped: "wikipedia"`.
+  Spent, remaining and reserved requests are reported in `/api/mubit/status` as
+  `wikipedia: {spent, remaining, reserve}`.
+- **Titles**: snapshots are keyed by pageid. A title index (`data/pages/titles.json`,
+  title → pageid) maps every asked-for title that resolved to a namespace-0 page (redirect titles
+  included) and every resolved title to its pageid. A title that resolves to a missing page or
+  another namespace is not recorded (refresh answers `404` and records nothing). Every title is
+  normalised before it is looked up or stored: percent-decoded (a `/wiki/` path), underscores
+  replaced by spaces, surrounding whitespace trimmed and inner runs collapsed to one space, and the
+  first character upper-cased (enwiki's first-letter rule); the rest keeps its case. Updates are
+  serialised across processes: the writer takes an exclusive lock on `data/pages/titles.lock`,
+  re-reads the index, merges its entries, writes a temporary file and renames it over the index,
+  then releases the lock, so a CLI ingest and an API refresh at the same time lose no entry.
+  `pages.ingest` updates it, so both the CLI
+  (`triage pages ingest`) and refresh record their titles. At API startup the index is also
+  seeded with every snapshot's `title`, so snapshots written before the index existed are found.
+  The index is a file, so it survives an API restart and an ingested article is not re-ingested
+  after one. Every `?title=` endpoint looks the title up there; a redirect title finds its
+  snapshot after one refresh. A title not in that index is `404`.
 
 Endpoints:
 
-- `GET /api/watchlist` → `[{title, pageid, risk_score, risk_partial, flagged_30d, edits_30d, reverted_30d, last_edit_at, spark: [int × 30]}]`
-- `GET /api/page?title=` → `PageAnalysis` from the latest snapshot (watchlist titles only; `404`
-  until ingested)
-- `POST /api/page/refresh?title=` → re-ingests a watchlist title from Wikipedia (at most once per
-  10 min per title), returns `PageAnalysis`
+- `GET /api/watchlist` → the ingested watchlist pages, ranked by risk: `[{title, pageid, risk_score, risk_partial, flagged_30d, edits_30d, reverted_30d, last_edit_at, spark: [int × 30]}]`
+- `GET /api/page?title=` → `PageAnalysis` from the latest snapshot of any ingested article, or
+  `404` until it is ingested
+- `POST /api/page/refresh?title=` → ingests or re-ingests the article from Wikipedia (namespace 0,
+  redirects resolved; a missing page or another namespace gets `404`). At most once per 10 min
+  per resolved pageid, so redirect titles of one page share the limit; a title not yet in the
+  index is resolved first with one query request. Returns `PageAnalysis`, or `429` with
+  `{"reason": "recent"}` (the 10-min limit) or `{"reason": "wikipedia"}` (only the live reserve
+  of the Wikipedia budget is left). It makes no Mubit calls.
+- `POST /api/page/classify?title=` → queues the article's edits of the last 30 days for
+  extract → classify, run in the background under the Mubit budget. The queue is one global FIFO
+  shared by all pages and drained by one worker, one call at a time (also paced by
+  `--min-interval`). Its rows are logged with `kind = page` (section 7.5), under the limiter
+  category `classify`. A job sends only the edit's steps that are not final (section 7.4), with
+  the section 7.4 retry. Idempotent: each 30-day edit
+  is counted in exactly one of `already` (classified, section 7.4), `errored` (a final error in
+  its extract or classify step, or an unavailable diff; section 7.4; never re-sent by this
+  endpoint), `pending` (already queued or
+  running; not queued again), `queued` (newly queued, newest first) and `skipped` (not queued
+  because the budget cannot cover it). An edit whose last attempt was a gateway error is not
+  final, so it is queued again like a never-sent edit.
+  The spendable budget is `remaining − live_reserve − 4·pending_all`, where `pending_all` counts
+  the jobs queued or running for every page, so budget already committed to another page's jobs
+  is not promised twice. At most `floor(spendable / 4)` edits are queued, four calls (extract,
+  classify and a retry of each) being the most one job costs (section 7.4). Returns
+  `202 {queued, already, errored, pending, skipped, remaining}`
+  (`remaining` is the call budget left), `404` until ingested, `429` when the spendable budget is
+  below four calls or only the live reserve of the Wikipedia budget is left.
+  `PageAnalysis.classify_pending` counts the article's 30-day edits still queued or running,
+  `classify_errored` those that are errored, `classify_open` those a `POST` would queue now (not
+  classified, errored or pending, including edits open after a gateway error), and
+  `classify_stopped` is `null`, `"budget"` or `"wikipedia"`. `classify_stopped` is per page and
+  held in memory only: when the worker drops leftover jobs it is set on every page that had a job
+  dropped (the running job's page included), and an accepted `POST` resets it to `null` for the
+  POSTed page only. After an API restart it is `null` on every page; the dropped edits are then
+  open and counted in `classify_open`. So `risk_partial` is true exactly
+  when `classify_pending + classify_errored + classify_open > 0`.
+  The worker checks the Mubit live reserve before every call, a retry included; when only the
+  reserve is left it makes no call and drops that job and the leftover jobs (no new row; a later
+  `POST` may queue them again), `classify_pending` falls to 0 and `classify_stopped` is
+  `"budget"`. This happens whatever spent the budget (`live`, `brief`, or this queue's own calls
+  and retries). A job dropped after its extract keeps the extract row, so a later `POST` sends
+  only classify. A gateway error ends that edit's job (its step stays open); a gateway `429`
+  means the Mubit cap is spent, so it also drops the leftover jobs with `classify_stopped:
+  "budget"` instead of sending each one into the same `429`. A diff fetch that fails
+  transiently (section 7.4) drops that edit's job before any Mubit call (no row; the step stays
+  open, so the edit counts in `classify_open`); if the failure is the Wikipedia live reserve
+  (`BudgetSpent`), the leftover jobs are dropped the same way with `classify_stopped:
+  "wikipedia"`. A revision or parent absent from the wikitext reply is recorded as an
+  unavailable diff (section 7.4): the edit counts in `classify_errored`, not in `classify_open`,
+  and is never queued again, so the page stays `risk_partial` with the reason shown and the
+  classify button hides.
 - `GET /api/page/brief?title=` → cached `{brief_md, generated_at, model_served}` or `404`
-- `POST /api/page/brief?title=` → generates the brief once (watchlist titles only, charged to the
+- `POST /api/page/brief?title=` → generates the brief once (any ingested article, charged to the
   Mubit budget), then returns the cached one
 - `GET /api/edit/{revid}` → `Edit`
-- `GET /api/live` (SSE) → `{revid, title, user_kind, label, severity, review, ts, served}` for watchlist edits
+- `GET /api/live` (SSE) → `{revid, title, user_kind, label, severity, review, ts, served, stopped}` for watchlist edits
   (the extract and classify calls behind it run in the API process under the Mubit budget,
-  not per SSE client)
+  not per SSE client). `stopped` is null when the edit was classified (or, with `label` null,
+  when its diff fetch failed transiently; section 7.4), `"budget"` when the
+  Mubit budget is spent and `"wikipedia"` when the Wikipedia budget is spent; in both cases
+  `label`, `severity` and `review` are null and the dashboard shows "not classified: Mubit
+  budget" or "not classified: Wikipedia budget".
 - `GET /api/mubit/status` → per step: `{requests, answered, errors: {gateway, unparseable}, served_by: {model: n}, provider_share, latency_p50_ms, tokens_in, tokens_out, shift: {hard: […], soft: […]}, agreement: {extract, classify, chained} (each {value, n, run_id, ts} or null), console: {…}}`.
   `requests` counts every logged call. `served_by`, `provider_share`, the medians, the token
   totals, `shift` and `agreement` use answered rows only (section 8); errors are counted
-  separately per group and never scored. `console` is copied from `data/mubit_status.json`, which a human fills from the Mubit console
+  separately per group and never scored. Next to the steps, a top-level
+  `wikipedia: {spent, remaining, reserve}` reports the request budget. `console` is copied from `data/mubit_status.json`, which a human fills from the Mubit console
   (kept examples, adapter version, test result) because Mubit has no read API.
 - `GET /api/cost` → `{provider_per_1k_edits, calls_per_edit, tokens_per_call, price: config.PRICE_USD_PER_MTOK, assumptions}`
 
 ```
 PageAnalysis = {title, pageid, as_of, days, computed_at, risk_score, risk_partial, risk_parts,
                 analytics: {section 5 fields}, structure: {sections_then, sections_now, controversy_*,
-                words_*, bloat_index, negative_words_removed}, editors: [Editor], flags: [Edit]}
+                words_*, bloat_index, negative_words_removed}, editors: [Editor], flags: [Edit],
+                classify_pending: int, classify_errored: int, classify_open: int,
+                classify_stopped: "budget"|"wikipedia"|null}
 Editor = {name, kind, edits, share, account_age_days, edit_count, spa, reverted}
          (IP editors are grouped into one row "anonymous (IP)", temporary accounts into one row)
 Edit = {revid, parentid, timestamp, title, editor_kind, comment, size_delta, reverted, reverting,
@@ -475,15 +620,41 @@ Edit = {revid, parentid, timestamp, title, editor_kind, comment, size_delta, rev
 Runs on `https://en.wikipedia.org/wiki/*` article pages (namespace 0 only: skip titles with a
 namespace prefix such as `Special:`, `Talk:`, `User:`). All network calls from the service worker.
 
-- **Badge**: colour by `risk_score` (grey no data, green < 30, amber 30–60, red > 60); text is
-  `flagged_30d`.
+- **Badge**: colour by `risk_score` (green < 30, amber 30–60, red > 60); text is `flagged_30d`.
+  When there is no data or `risk_partial` is true the badge is grey with text `–`, whatever
+  `risk_score` says, because a partial `flagged_30d` would understate the score.
 - **Banner** under `#firstHeading`, in a Shadow DOM: `23 edits / 30d · 4 flagged · 2 reverted ·
   3 editors made 80% · "Controversies" moved down 2 places · [Open]`.
 - **Drawer** (right-hand panel, Shadow DOM) with tabs: **Pulse** (edits per day over 90 days as an
   inline SVG sparkline, flagged edits as dots, burst days shaded), **Flags** (label chip, severity,
   rationale, account kind, time, reverted badge; click opens the diff), **Editors**, **Structure**
   (sections then vs now with word deltas, controversy rank move, bloat index), **Brief** (on
-  demand: a button sends `POST /api/page/brief`), **Mubit** (per-step served-by, provider share, shift signals, console fields).
+  demand: a "Request brief" button sends `POST /api/page/brief`), **Mubit** (per-step served-by, provider share, shift signals, console fields).
+- **First visit and classification**: when `GET /api/page` returns `404`, the service worker
+  sends `POST /api/page/refresh` once per title per browser session, whatever the outcome. The
+  check-and-record is serialised in the service worker: an in-memory pending set is checked and
+  the title added to it synchronously, before any `await`; then `chrome.storage.session` is
+  checked and the title written to it, then the `POST` is sent. So two tabs opening the same
+  article cannot both send it, and a restarted service worker (empty pending set) still finds the
+  title in session storage. The banner reads "reading this article's history from
+  Wikipedia…" until it returns. If refresh fails, the banner reads: `404` "Not covered: not an
+  article Wikipedia knows"; `429` `recent` "Refreshed in the last 10 minutes; try again later";
+  `429` `wikipedia` "Not read: Wikipedia request budget spent"; any other failure "Could not
+  reach the triage backend". For every failure except `404` the banner also shows "Try again",
+  which sends one refresh `POST` per click (a click is not blocked by the session record; `404`
+  gets no retry). Pulse, Editors and Structure need no model call. Until the
+  window is classified (`risk_partial`), the banner shows `flagged_30d` as "N flagged so far
+  (partial)" instead of "N flagged", plus "K could not be classified" when `classify_errored` is
+  above 0, and Flags offers "Classify recent edits" while `classify_open` is above 0
+  (`POST /api/page/classify`, at most four Mubit calls per queued edit per click: extract,
+  classify and one retry of each). With only errored edits left (final errors, or revisions
+  Wikipedia no longer serves) there is nothing to send, so the button is hidden and the
+  banner's error count says why the page stays partial.
+  The banner then shows the response counts (`skipped` as "not classified: Mubit budget",
+  `errored` as errors). The classify `POST` drops the cached page like refresh does, and each
+  poll bypasses the 60 s page cache. The page is re-read every 10 s while `classify_pending > 0`;
+  polling stops when `classify_pending` is 0, `classify_stopped` is set (shown in the banner),
+  a request fails, the tab closes, or after 30 minutes.
 - **Footer** on every tab: `extract: served by … · classify: served by … · brief: served by …`
   from `/api/mubit/status`.
 - **Options**: backend URL (default `http://127.0.0.1:8322`), demo mode (always the bundled
@@ -507,7 +678,8 @@ console fields), cost panel.
 | U2 pipeline | `diffs.py`, `steps.py`, `llm.send`, `pipeline.py`, CLI `triage pipeline run|brief` | Golden hashes for the three prompts/schemas; existing golden tests unchanged; a 3-revision real run logs 6 rows with served model and request ids; resume skips done revids. |
 | U3 extension | `extension/` against the contract in section 9 with fixtures | Loads unpacked; badge, banner, drawer tabs render from fixtures; a pytest checks the manifest and that fixtures carry the contract's keys. |
 | U4 provenance | `provenance.py`, CLI `triage provenance` | Fingerprint and shift tests on synthetic rows, including that gateway errors (429s) and unparseable replies raise no signal and are counted separately, and that agreement skips revids errored in either run; run on today's log prints a provider-only baseline per task. |
-| U5 api + dashboard | `api.py`, `watch.html`, live watchlist feed, CLI `triage api` | Endpoints return the contract on real snapshots; the extension works against it; tests show a `POST` without an allowed `Origin` gets `403`, no `GET` calls Mubit or Wikipedia, non-watchlist titles are refused, and the call budget stops calls when spent. After U1, U2, U4 land. |
+| U5 api + dashboard | `api.py`, `watch.html`, live watchlist feed, CLI `triage api`; `corpus.Session` `reserve`, `using_reserve()` and `BudgetSpent` (section 3); the store's `unavailable_diffs` table, read by `pipeline.py` resume | Endpoints return the contract on real snapshots; the extension works against it; tests show a `POST` without an allowed `Origin` gets `403`, no `GET` calls Mubit or Wikipedia, refresh ingests any article within the request budget and calls no model, a redirect title finds its snapshot after one refresh, a snapshot written by `triage pages ingest` is found by its title, the title index survives an API restart, a title that resolves to a missing page is not recorded, `Foo_bar`, `foo bar` and `Foo%20bar` find the same snapshot, two concurrent index writers lose no entry, refresh is limited per resolved pageid (a second redirect title within 10 min gets `429`), classify and brief stop at the Mubit live reserve, refresh and classify stop at the Wikipedia live reserve while live diffs still fetch, a live edit after the Wikipedia budget is spent arrives with `stopped: "wikipedia"` and no Mubit call, two classify `POST`s in a row queue each edit once, a classify `POST` for a second page counts the first page's pending jobs against its cap, rule-labelled and errored edits are never re-sent, and a budget spent mid-queue drops the leftover jobs so `classify_pending` reaches 0 with `classify_stopped: "budget"`. Final-state tests: an edit whose extract (or classify) got a gateway error is queued again by a later `POST`, and one whose extract was answered re-sends only classify; an edit whose extract got two unparseable replies is counted `errored`, never gets a classify call and is not re-sent, and the same for classify; a window where every call failed has `risk_partial: true` with `classify_errored` equal to the window's edits; a gateway `429` drops the leftover jobs with `classify_stopped: "budget"`; the spendable budget reserves four calls per pending job; the worker checks the live reserve before a retry and drops the job without the call; the endpoint's rows carry `kind = page`. An edit whose revision (or parent) is missing from the wikitext reply makes no Mubit call, is counted `errored` and not in `classify_open`, and is not queued by a later `POST`; a diff fetch that fails with a connection error leaves the edit in `classify_open`. An answered non-probe row wins over a final-error row of the same step, and probe rows (answered or errored) never change `already`, `errored` or `risk_partial`. A refresh refused by the Wikipedia reserve mid-ingest returns `429` `{"reason": "wikipedia"}`, writes no snapshot or index entry, and the API, worker and live thread keep running; a MediaWiki API error payload (`wiki._api`'s plain `SystemExit`) during a classify job or a live edit leaves the worker and the live thread running, the classify job's edit in `classify_open` while the worker goes on to the next job (so `classify_pending` still reaches 0), and during a refresh returns `502` with no snapshot or index entry; while the live thread is inside `using_reserve()`, a concurrent refresh on another thread is still refused at the reserve; with the CLI defaults `corpus.Session` still exits with its old message. A dropped queue sets `classify_stopped` on each page that lost a job, and a `POST` for one page resets only that page. After U1, U2, U4 land. |
+| U6 extension coverage | First-visit ingest, "Classify recent edits", polling, unclassified banner; `extension/README.md` (the brief, refresh and classify `POST`s, node required by the tests) and the CLAUDE.md gate list (node required) updated with the tests | `fixtures/page.json` and the contract test carry `classify_pending`, `classify_errored`, `classify_open` and `classify_stopped`; the route test allows exactly the brief, refresh and classify `POST`s. Service-worker tests run under node from pytest and fail, not skip, when node is missing (node becomes a gate requirement): a `404` page sends one refresh `POST` per title per session, also across tabs and when two tabs ask at once; each refresh error shows its banner text, and every non-`404` error offers "Try again", which sends one refresh per click; the badge is grey with `–` while `risk_partial`, whatever `risk_score`; the banner shows the errored count, and "Classify recent edits" is hidden when `classify_open` is 0; classify is sent only on a click; polling bypasses the page cache and stops on each stop condition; no other `POST`. |
 
 ## 13. Guardrails
 
