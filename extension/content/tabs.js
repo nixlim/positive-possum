@@ -53,7 +53,8 @@ function refreshControl(page, ctx) {
       }
       status.textContent = res && res.offline
         ? "refresh needs the backend (offline)"
-        : "refresh failed: " + ((res && res.error) || "no data") + " (at most once per 10 minutes)";
+        : "refresh failed: " + ((res && res.error) || "no data") +
+          (res && res.status ? " (at most once per 10 minutes)" : "");
       button.disabled = false;
     },
   });

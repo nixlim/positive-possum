@@ -71,7 +71,7 @@ function renderBrief(page, ctx) {
       button.disabled = true;
       out.replaceChildren(note("writing the brief through Mubit, about 30 s…"));
       const res = await ctx.send({ type: "brief-generate", title: ctx.title });
-      out.replaceChildren(briefView(res));
+      out.replaceChildren(res && res.data ? briefView(res) : empty("Brief request failed: " + errorText(res)));
       button.hidden = Boolean(res && res.data);
       button.disabled = false;
     },
@@ -170,7 +170,7 @@ function stepCard(name, s) {
 
 function renderMubit(page, ctx) {
   const status = ctx.status && ctx.status.data;
-  if (!status) return empty("Mubit status unavailable.");
+  if (!status) return empty("Mubit status unavailable: " + errorText(ctx.status) + ".");
   return h(
     "div",
     null,
@@ -199,7 +199,7 @@ function stepState(s) {
 
 function footerView(statusRes) {
   const status = statusRes && statusRes.data;
-  if (!status) return h("footer", { text: "Mubit status unavailable" });
+  if (!status) return h("footer", { text: "Mubit status unavailable: " + errorText(statusRes) });
   const parts = STEPS.map(([key, name], i) => {
     const state = stepState(status[key]);
     return [

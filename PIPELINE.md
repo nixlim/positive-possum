@@ -486,8 +486,9 @@ namespace prefix such as `Special:`, `Talk:`, `User:`). All network calls from t
   demand: a button sends `POST /api/page/brief`), **Mubit** (per-step served-by, provider share, shift signals, console fields).
 - **Footer** on every tab: `extract: served by … · classify: served by … · brief: served by …`
   from `/api/mubit/status`.
-- **Options**: backend URL (default `http://127.0.0.1:8322`), demo mode (bundled fixtures when the
-  backend is unreachable, with a small "offline" mark).
+- **Options**: backend URL (default `http://127.0.0.1:8322`), demo mode (always the bundled
+  fixtures, marked "offline · fixture data", never the backend). With demo mode off, an
+  unreachable backend shows a one-line notice under `#firstHeading` and no data.
 - Fixtures under `extension/fixtures/` use a synthetic article, never a real person.
 - Permissions: `storage`, host permissions for `https://en.wikipedia.org/*` and the backend origin.
 - Nice to have, decided at 22:00: X-ray overlay (mark sentences added by flagged edits in the page).

@@ -221,8 +221,9 @@ has not yet routed any of them. The console's Requests page ("Served by") is the
   Editors, Structure (controversy section and bloat), Brief and Mubit (error groups, switch
   signals, repeat-run agreement), and a footer saying per step whether the provider answered.
 
-It reads the local API at `http://127.0.0.1:8322`. Until that API runs, or with demo mode on in
-the options page, it shows bundled fixtures about a synthetic article, marked "offline". Only two
+It reads the local API at `http://127.0.0.1:8322`. Until that API runs it shows a one-line notice
+under the title and no data. Only with demo mode on in the options page does it show the bundled
+fixtures about a synthetic article, marked "offline · fixture data". Only two
 actions spend anything: requesting a brief (Mubit calls) and refreshing a page from Wikipedia.
 Details are in [`extension/README.md`](extension/README.md).
 

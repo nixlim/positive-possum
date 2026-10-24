@@ -26,6 +26,7 @@ function articleTitle(pathname) {
   if (!heading || !title) return;
   const send = (msg) => chrome.runtime.sendMessage(msg);
   const [pageRes, statusRes] = await Promise.all([send({ type: "page", title }), send({ type: "status" })]);
+  if (pageRes && pageRes.error === "backend unreachable") mountNotice(heading, pageRes);
   if (!pageRes || !pageRes.data) return;
   let drawer = null;
   // Mounts (or, after a refresh, replaces) the banner and drawer for one PageAnalysis.

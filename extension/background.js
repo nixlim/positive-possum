@@ -20,9 +20,10 @@ function url(base, kind, title) {
   return base.replace(/\/+$/, "") + ROUTES[kind].path + query;
 }
 
-async function fixture(kind, reason) {
+// Demo mode only: a synthetic article must never stand in for the real one being read.
+async function fixture(kind) {
   const r = await fetch(chrome.runtime.getURL(ROUTES[kind].fixture));
-  return { data: await r.json(), offline: true, reason };
+  return { data: await r.json(), offline: true, reason: "demo mode" };
 }
 
 async function fromBackend(base, kind, title) {
@@ -40,11 +41,11 @@ async function fromBackend(base, kind, title) {
 
 async function load(kind, title) {
   const { backend, demo } = await loadSettings();
-  if (demo) return fixture(kind, "demo mode");
+  if (demo) return fixture(kind);
   try {
     return await fromBackend(backend, kind, title);
   } catch {
-    return fixture(kind, "backend unreachable");
+    return { data: null, offline: false, error: "backend unreachable", backend };
   }
 }
 

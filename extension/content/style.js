@@ -10,6 +10,7 @@ const STYLE = `
   background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--faint)}
 .banner.low{border-left-color:var(--keep)}.banner.mid{border-left-color:var(--frontier)}.banner.high{border-left-color:var(--revert)}
 .facts{flex:1;min-width:0}
+.notice{display:block;color:var(--dim)}.notice code{color:var(--ink)}
 .chip{font:600 10px "Chakra Petch",system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase;
   padding:2px 7px;border:1px solid;border-radius:2px;white-space:nowrap}
 .chip.ok,.risk.low{color:var(--keep)}.chip.warn,.risk.mid{color:var(--frontier)}

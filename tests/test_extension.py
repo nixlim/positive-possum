@@ -263,6 +263,13 @@ def test_background_posts_only_for_brief_generation_and_refresh():
     assert "method: route.method" in src
 
 
+def test_options_page_says_fixtures_are_for_demo_mode_only():
+    note = (EXT / "options.html").read_text()
+    assert "unreachable the extension shows a one-line notice under the title and no data" in note
+    assert "Only demo mode shows the bundled fixtures" in note
+    assert not re.search(r"unreachable[^.]*shows the bundled fixtures", note)
+
+
 def test_only_the_service_worker_makes_network_calls():
     for path in JS_FILES:
         if path.name != "background.js":

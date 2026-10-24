@@ -36,6 +36,26 @@ function bannerFacts(page) {
   return move ? facts.concat(move) : facts;
 }
 
+// Vector 2022 puts the heading in a flex title bar; go below the bar, not beside the heading.
+function placeUnder(heading, host) {
+  (heading.closest(".vector-page-titlebar") || heading).after(host);
+}
+
+// One line when the backend cannot be reached: no data, no score, no colour band.
+function mountNotice(heading, res) {
+  const { host, root } = shadowHost("edit-watch-notice");
+  root.append(
+    h(
+      "div",
+      { class: "banner notice" },
+      "Edit watch: no backend at " + res.backend + ". Start it with ",
+      h("code", { text: "uv run triage api" }),
+      ", or turn on demo mode in Options.",
+    ),
+  );
+  placeUnder(heading, host);
+}
+
 function mountBanner(heading, res, onOpen) {
   const page = res.data;
   const { host, root } = shadowHost("edit-watch-banner");
@@ -49,8 +69,7 @@ function mountBanner(heading, res, onOpen) {
       h("button", { text: "Open", onclick: onOpen }),
     ),
   );
-  // Vector 2022 puts the heading in a flex title bar; go below the bar, not beside the heading.
-  (heading.closest(".vector-page-titlebar") || heading).after(host);
+  placeUnder(heading, host);
 }
 
 function mountDrawer(res, ctx) {

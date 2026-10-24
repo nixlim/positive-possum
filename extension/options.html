@@ -23,7 +23,7 @@ button:hover{background:#35e0d6;color:#031}
   <label>Backend URL<input id="backend" type="url" placeholder="http://127.0.0.1:8322"></label>
   <label class="check"><input id="demo" type="checkbox"> Demo mode: show the bundled fixtures and never call the backend</label>
   <button id="save">Save</button><span id="saved"></span>
-  <p class="note">When the backend is unreachable the extension shows the bundled fixtures (a synthetic article) and marks them "offline". Only http://127.0.0.1:8322 is in the extension's host permissions; any other backend must allow cross-origin requests.</p>
+  <p class="note">When the backend is unreachable the extension shows a one-line notice under the title and no data. Only demo mode shows the bundled fixtures (a synthetic article), marked "offline · fixture data". Only http://127.0.0.1:8322 is in the extension's host permissions; any other backend must allow cross-origin requests.</p>
 </main>
 <script src="shared.js"></script>
 <script src="options.js"></script>
