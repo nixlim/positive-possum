@@ -1,12 +1,12 @@
 {
   "manifest_version": 3,
-  "name": "Edit watch",
+  "name": "Wikipedia EditWatch",
   "version": "0.1.0",
   "description": "Signals for human review about recent edits to the English Wikipedia article you are reading.",
   "permissions": ["storage"],
   "host_permissions": ["https://en.wikipedia.org/*", "http://127.0.0.1:8322/*"],
   "background": { "service_worker": "background.js" },
-  "action": { "default_title": "Edit watch: open or close the drawer" },
+  "action": { "default_title": "EditWatch: open or close the drawer" },
   "options_page": "options.html",
   "content_scripts": [
     {

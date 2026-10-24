@@ -24,7 +24,7 @@ WIKIPEDIA_SPENT = {**BUDGET_SPENT, "reason": "wikipedia"}
 SERVER_ERROR = {"data": None, "offline": False, "status": 500, "error": "HTTP 500", "reason": None}
 NOT_INGESTING = {"data": None, "offline": False, "error": "not ingesting"}
 NOTICE = (
-    "Edit watch: no backend at http://127.0.0.1:8322. Start it with uv run triage api, "
+    "EditWatch: no backend at http://127.0.0.1:8322. Start it with uv run triage api, "
     "or turn on demo mode in Options."
 )
 COST = "at most four Mubit calls per queued edit per click: extract, classify and one retry of each"
@@ -102,13 +102,13 @@ def test_a_failed_brief_request_says_why(reply, reason):
 
 
 def line_text(text: str, retry: bool) -> str:
-    return "Edit watch: " + text + ("Try again" if retry else "")
+    return "EditWatch: " + text + ("Try again" if retry else "")
 
 
 def test_a_first_visit_mounts_the_reading_banner_and_sends_ingest_once():
     out = content({"page": NOT_FOUND, "status": UNREACHABLE, "ingest": "pending"})
     assert out["hosts"] == [
-        {"id": "edit-watch-line", "text": "Edit watch: reading this article's history from Wikipedia…"}
+        {"id": "edit-watch-line", "text": "EditWatch: reading this article's history from Wikipedia…"}
     ]
     assert sent(out, "ingest") == [{"type": "ingest", "title": TITLE}]
 

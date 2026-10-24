@@ -1,4 +1,4 @@
-# Edit watch (Chrome extension)
+# EditWatch (Chrome extension)
 
 Manifest V3, plain JS, no build step. Shows signals for human review about recent edits to the
 English Wikipedia article you are reading, from the local API (`uv run triage api`, port 8322).
@@ -43,7 +43,7 @@ English Wikipedia article you are reading, from the local API (`uv run triage ap
   pages (namespace prefixes, no `#firstHeading`); `ui.js` mounts the banner under the heading and
   the right-hand drawer, both in closed Shadow DOM, or only the one-line notice when the backend
   is unreachable (never an ingest; demo mode never ingests either). On a first visit (`page`
-  replies `404`) it shows "Edit watch: reading this article's history from Wikipedia…" and sends
+  replies `404`) it shows "EditWatch: reading this article's history from Wikipedia…" and sends
   `ingest`; a `PageAnalysis` back mounts the banner and drawer, and a failure replaces the line
   with the reason, with no score, drawer or badge colour: `404` "Not covered: not an article
   Wikipedia knows"; `429` `recent` "Refreshed in the last 10 minutes; try again later"; `429`

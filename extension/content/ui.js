@@ -54,7 +54,7 @@ function mountNotice(heading, res) {
     h(
       "div",
       { class: "banner notice" },
-      "Edit watch: no backend at " + res.backend + ". Start it with ",
+      "EditWatch: no backend at " + res.backend + ". Start it with ",
       h("code", { text: "uv run triage api" }),
       ", or turn on demo mode in Options.",
     ),
@@ -71,7 +71,7 @@ function mountLine(heading, text, onRetry) {
     h(
       "div",
       { class: "banner notice" },
-      h("span", { class: "facts", text: "Edit watch: " + text }),
+      h("span", { class: "facts", text: "EditWatch: " + text }),
       onRetry ? h("button", { text: "Try again", onclick: onRetry }) : null,
     ),
   );
