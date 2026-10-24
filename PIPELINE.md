@@ -375,13 +375,15 @@ instead counted per step and per hour, in two groups, and never scored:
   a rate next to the signals, not fed into them.
 
 Per step (`repo`), `provenance.shift(rows, baseline_n=200)` compares a recent window of answered
-rows with a baseline: the first `baseline_n` answered calls of that step that carry the provider
-fingerprint (`is_provider` true and Anthropic's headers present). Mubit may start serving a new
-task after ~25 kept examples, well before call 200, so the baseline is filtered on the
-fingerprint rather than taken by position. Any single answered call outside the provider
-fingerprint (served string not the provider's, or Anthropic headers missing) is a hard signal on
-its own, whatever the baseline holds. Against the baseline, any categorical change (id prefix,
-usage keys) is a hard signal; a median latency or output-token change beyond the baseline's
+rows with a baseline: the first `baseline_n` answered calls of that step that pass the provider
+test (`is_provider` true, `anthropic-organization-id` present, `request-id` starting `req_`).
+Mubit may start serving a new task after ~25 kept examples, well before call 200, so the baseline
+is filtered on the provider test rather than taken by position. Any single answered call failing
+the provider test is a hard signal on its own, whatever the baseline holds. The
+`anthropic-ratelimit-*` headers are not part of the provider test, because they are not needed to
+identify Anthropic and leaving them out keeps the test to the two marks every provider reply has
+carried; their presence is a categorical field instead. Against the baseline, any categorical
+change (id prefix, usage keys, rate-limit header presence) is a hard signal; a median latency or output-token change beyond the baseline's
 inter-quartile range is a soft signal. `provider_share` is provider-fingerprint calls divided by
 answered calls.
 `uv run triage provenance [--step …] [--hours 24]` prints both per step and per hour. The
@@ -393,7 +395,12 @@ agreement can be split by who served its input.
 Repeat runs (`kind = probe`): a fixed set of 50 revids is re-sent on a schedule. Extract gets
 the same user message each time. Probe classify reuses the **baseline extract** (the revid's
 first answered extract, stored in `extra`) rather than the fresh probe extract, so its input is
-byte-identical across runs too. Two metrics are reported per step:
+byte-identical across runs too. A probe classify row's `extra.extract_call_id` tells the two
+apart: pointing to a `probe` extract row makes it chained, to a non-probe extract row
+identical-input; a row without it is left out of both. Agreement is computed over the step's
+latest probe run, chosen from all its probe rows, errored ones included (a fully errored run gives
+`n` 0 or null, never the previous run's value), and reports that run's `run_id` and `ts`. Two metrics are
+reported per step:
 
 - `extract_agreement` and `classify_agreement` (identical inputs): the share of revids whose
   parsed output fields match the baseline run.
@@ -441,7 +448,7 @@ Endpoints:
 - `GET /api/live` (SSE) → `{revid, title, user_kind, label, severity, review, ts, served}` for watchlist edits
   (the extract and classify calls behind it run in the API process under the Mubit budget,
   not per SSE client)
-- `GET /api/mubit/status` → per step: `{requests, answered, errors: {gateway, unparseable}, served_by: {model: n}, provider_share, latency_p50_ms, tokens_in, tokens_out, shift: {hard: […], soft: […]}, agreement: {extract, classify, chained} (each {value, n} or null), console: {…}}`.
+- `GET /api/mubit/status` → per step: `{requests, answered, errors: {gateway, unparseable}, served_by: {model: n}, provider_share, latency_p50_ms, tokens_in, tokens_out, shift: {hard: […], soft: […]}, agreement: {extract, classify, chained} (each {value, n, run_id, ts} or null), console: {…}}`.
   `requests` counts every logged call. `served_by`, `provider_share`, the medians, the token
   totals, `shift` and `agreement` use answered rows only (section 8); errors are counted
   separately per group and never scored. `console` is copied from `data/mubit_status.json`, which a human fills from the Mubit console

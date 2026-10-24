@@ -82,17 +82,23 @@ def cmd_report(a):
 def cmd_provenance(a):
     from . import provenance as pv
 
-    rep = pv.report(pv.read_calls(step=a.step), a.baseline, a.hours)
+    # Read every step: classify agreement needs the extract rows its calls point to.
+    rep = pv.report(pv.read_calls(), a.baseline, a.hours)
+    if a.step:
+        rep = {a.step: rep[a.step]} if a.step in rep else {}
     print(json.dumps(rep, indent=1) if a.json else pv.render(rep))
 
 
 def _provenance_parser(sub) -> None:
     s = sub.add_parser(
-        "provenance", help="per step: did the served model, headers or reply shape change? (log only)"
+        "provenance",
+        help="per step: provider test, errors, shift and probe agreement from the log (no calls)",
     )
     s.add_argument("--step", help="one step (calls.repo), e.g. enwiki or edit-classify; default: all")
     s.add_argument("--hours", type=float, default=24, help="recent window compared with the baseline")
-    s.add_argument("--baseline", type=int, default=200, help="first N answered calls of a step")
+    s.add_argument(
+        "--baseline", type=int, default=200, help="first N answered provider-served calls of a step"
+    )
     s.add_argument("--json", action="store_true")
     s.set_defaults(fn=cmd_provenance)
 
